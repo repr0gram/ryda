@@ -12,7 +12,7 @@
  */
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const CHROME =
   process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -172,6 +172,25 @@ async function main() {
 
   await cdp.send("Page.navigate", { url });
   await sleep(1500);
+
+  // Drive a real file through the real <input type="file">, so the import path
+  // is verified end to end rather than by calling the parser directly.
+  const upload = arg("upload", null);
+  if (upload) {
+    await cdp.send("DOM.enable");
+    const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+    const { nodeId } = await cdp.send("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: 'input[type="file"]',
+    });
+    if (!nodeId) throw new Error("no file input found on the page");
+    await cdp.send("DOM.setFileInputFiles", {
+      nodeId,
+      files: [resolve(upload)],
+    });
+    console.log(`uploaded ${upload}`);
+    await sleep(2500);
+  }
 
   if (waitFor) {
     const expr = WAITS[waitFor] ?? waitFor;

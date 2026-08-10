@@ -1,16 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CursorStore, type Selection } from "@/lib/cursor-store";
 import { estimatePower } from "@/lib/analysis/power";
 import { computeRideMetrics } from "@/lib/analysis/metrics";
-import { DEFAULT_PROFILE, type RideMeta, type RideStreams } from "@/lib/analysis/types";
+import type { RideMeta, RideStreams } from "@/lib/analysis/types";
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  toProfile,
+  type RiderSettings,
+} from "@/lib/rider-settings";
+import { RiderSettingsPanel } from "./rider-settings-panel";
 import { RideMapLoader } from "./map-loader";
 import { StreamChart } from "./stream-chart";
 import { ConfidenceChip } from "./confidence-chip";
 import { StatRow } from "./stat-row";
-
-const FTP = 250;
 
 type ChannelKey = "power" | "heartrate" | "speed" | "altitude";
 
@@ -36,9 +41,17 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
   // One store per mounted ride view; charts and the map both talk to it.
   const cursor = useMemo(() => new CursorStore(), []);
 
+  // Server render must match the client's first paint, so start from defaults
+  // and adopt the stored settings after mount.
+  const [settings, setSettings] = useState<RiderSettings>(DEFAULT_SETTINGS);
+  useEffect(() => setSettings(loadSettings()), []);
+
+  const profile = useMemo(() => toProfile(settings), [settings]);
+  const ftp = profile.ftp ?? DEFAULT_SETTINGS.ftp;
+
   const power = useMemo(
-    () => estimatePower(streams, meta, DEFAULT_PROFILE),
-    [streams, meta],
+    () => estimatePower(streams, meta, profile),
+    [streams, meta, profile],
   );
 
   const x = xIsDistance ? streams.distance : streams.time;
@@ -55,9 +68,9 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
       distance: streams.distance.subarray(from, to),
       altitude: streams.altitude.subarray(from, to),
       heartrate: streams.heartrate?.subarray(from, to),
-      ftp: FTP,
+      ftp,
     });
-  }, [power.watts, streams, meta.n, selection]);
+  }, [power.watts, streams, meta.n, selection, ftp]);
 
   const mapValues =
     mapChannel === "power"
@@ -96,6 +109,7 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
               Clear selection
             </button>
           ) : null}
+          <RiderSettingsPanel settings={settings} onChange={setSettings} />
           <Segmented
             options={[
               { value: "time", label: "Time" },
@@ -107,7 +121,7 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
         </div>
       </header>
 
-      <StatRow metrics={metrics} ftp={FTP} />
+      <StatRow metrics={metrics} ftp={ftp} />
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface-1">

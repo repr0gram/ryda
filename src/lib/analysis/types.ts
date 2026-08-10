@@ -77,6 +77,7 @@ export type ConfidenceFlag =
   | "gps-altitude"
   | "no-cadence"
   | "hr-power-decoupled"
+  | "hr-power-implausible"
   | "sustained-high-speed"
   | "sparse-sampling";
 

@@ -224,6 +224,20 @@ function scoreConfidence(
     if (hr) {
       const r = correlation(watts, hr);
       if (Number.isFinite(r) && r < 0.3) flags.push("hr-power-decoupled");
+
+      // Shape agreement is not enough — the LEVEL has to be plausible too.
+      // Efficiency factor (watts per beat) is roughly 1.2–2.5 for a trained
+      // cyclist. Well under that means the model is under-reading: usually a
+      // rider mass that is too low, a CdA that is too small, or a headwind.
+      // Without this check a ride can average 98 W at 159 bpm and still be
+      // reported as high confidence, which is exactly the fake precision this
+      // whole feature exists to avoid.
+      const meanHr = meanOf(hr);
+      const meanW = meanOf(watts);
+      if (meanHr > 110 && meanW > 0) {
+        const efficiency = meanW / meanHr;
+        if (efficiency < 0.9 || efficiency > 3.5) flags.push("hr-power-implausible");
+      }
     }
   }
 
@@ -233,7 +247,9 @@ function scoreConfidence(
 
 function levelFor(flags: ConfidenceFlag[]): ConfidenceLevel {
   const heavy =
-    flags.includes("gps-altitude") || flags.includes("hr-power-decoupled");
+    flags.includes("gps-altitude") ||
+    flags.includes("hr-power-decoupled") ||
+    flags.includes("hr-power-implausible");
   if (flags.length === 0) return "high";
   if (flags.length >= 3) return "unusable";
   if (heavy) return "low";
@@ -246,6 +262,8 @@ const FLAG_TEXT: Record<ConfidenceFlag, string> = {
   "no-cadence": "no cadence recorded, so coasting can't be separated from pedalling",
   "hr-power-decoupled":
     "heart rate doesn't track the estimate, which usually means wind or drafting",
+  "hr-power-implausible":
+    "the watts per heartbeat are outside a believable range — check your weight and riding position in settings, since the model is probably mis-scaled",
   "sustained-high-speed":
     "long stretches of high speed on flat ground, typical of riding in a group",
   "sparse-sampling": "the device recorded too infrequently to model acceleration",
@@ -261,6 +279,19 @@ function summarise(level: ConfidenceLevel, flags: ConfidenceFlag[]): string {
       ? reasons[0]
       : `${reasons.slice(0, -1).join("; ")}; and ${reasons.at(-1)}`;
   return `Treat with caution — ${joined}.`;
+}
+
+/** Mean over finite, positive samples. */
+function meanOf(values: ArrayLike<number>): number {
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < values.length; i++) {
+    if (Number.isFinite(values[i]) && values[i] > 0) {
+      sum += values[i];
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
 }
 
 /** Pearson correlation, ignoring pairs where either side is not finite. */

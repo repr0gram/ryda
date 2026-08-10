@@ -217,6 +217,43 @@ describe("estimatePower", () => {
     expect(confidence.flags).toEqual([]);
   });
 
+  test("flags an implausible watts-per-heartbeat even when the shape tracks", () => {
+    // A real ride averaged 98 W at 159 bpm (~0.6 W/bpm) and was still being
+    // reported as high confidence, because only the correlation was checked.
+    // Shape agreement is not the same as a believable level.
+    const { streams, meta } = syntheticRide({
+      seconds: 600,
+      speed: 4,
+      grade: 0,
+      cadence: 80,
+    });
+    const hr = new Float32Array(meta.n);
+    const { watts } = estimatePower(streams, meta, PROFILE);
+    for (let i = 0; i < meta.n; i++) {
+      // Track power's shape, but pinned far too high for the wattage.
+      hr[i] = 158 + (watts[i] - 60) * 0.01;
+    }
+    const withHr = { ...streams, heartrate: hr };
+    const { confidence } = estimatePower(withHr, meta, PROFILE);
+    expect(confidence.flags).toContain("hr-power-implausible");
+    expect(confidence.level).not.toBe("high");
+    expect(confidence.summary).toMatch(/weight|position/i);
+  });
+
+  test("accepts a believable watts-per-heartbeat", () => {
+    const { streams, meta } = syntheticRide({
+      seconds: 600,
+      speed: 8,
+      grade: 0.04,
+      cadence: 85,
+    });
+    const { watts } = estimatePower(streams, meta, PROFILE);
+    const hr = new Float32Array(meta.n);
+    for (let i = 0; i < meta.n; i++) hr[i] = 100 + watts[i] * 0.18;
+    const { confidence } = estimatePower({ ...streams, heartrate: hr }, meta, PROFILE);
+    expect(confidence.flags).not.toContain("hr-power-implausible");
+  });
+
   test("confidence degrades without a barometer and without cadence", () => {
     const { streams, meta } = syntheticRide({ seconds: 300, speed: 6, grade: 0.04 });
     const { confidence } = estimatePower(

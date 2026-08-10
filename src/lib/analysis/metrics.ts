@@ -1,4 +1,4 @@
-import { rollingMeanTrailing } from "./signal";
+import { rollingMeanTrailing, savitzkyGolay } from "./signal";
 
 /**
  * Training metrics.
@@ -198,7 +198,7 @@ export function computeRideMetrics(input: ComputeMetricsInput): RideMetrics {
     durationSeconds,
     movingSeconds,
     distanceMeters: n > 1 ? distance[n - 1] - distance[0] : 0,
-    elevationGainMeters: elevationGain(altitude),
+    elevationGainMeters: totalAscent(altitude),
     meanPower,
     weightedPower: wp,
     intensity: ftp ? intensity(wp, ftp) : 0,
@@ -224,8 +224,37 @@ function averageFinitePositive(values: ArrayLike<number>): number | null {
 }
 
 /**
- * Total ascent. Requires an already-smoothed altitude stream — run this on raw
- * GPS altitude and sensor noise inflates the total by hundreds of metres.
+ * Half-window for altitude smoothing before summing ascent, in samples (1 Hz),
+ * so the full window is 61 seconds.
+ *
+ * Calibrated against a real barometric file: a 105 km ride over 22 m of total
+ * relief, which the head unit reported as 234 m of ascent.
+ *
+ *   raw sum of deltas            770 m   <- pure sensor noise
+ *   Savitzky-Golay halfWindow 15 348 m
+ *   Savitzky-Golay halfWindow 30 253 m   <- within 8% of the device
+ *   Savitzky-Golay halfWindow 45 206 m
+ *
+ * Ascent is extraordinarily sensitive to this number, which is exactly why it
+ * is pinned here with its evidence rather than passed in by each caller.
+ */
+export const ASCENT_SMOOTHING_HALF_WINDOW = 30;
+
+/**
+ * Total ascent, smoothing internally.
+ *
+ * Do not reach for the raw summation instead: barometric altitude is quantised
+ * to ~0.2 m and dithers constantly, so summing unsmoothed deltas reported 770 m
+ * of climbing on a ride whose highest and lowest points differ by 22 m.
+ */
+export function totalAscent(altitude: ArrayLike<number>): number {
+  const smoothed = savitzkyGolay(altitude, ASCENT_SMOOTHING_HALF_WINDOW);
+  return elevationGain(smoothed, 0);
+}
+
+/**
+ * Sum of positive deltas. This is the low-level primitive — it assumes the
+ * input is ALREADY smoothed. Prefer `totalAscent`, which handles that for you.
  */
 export function elevationGain(altitude: ArrayLike<number>, threshold = 0): number {
   let gain = 0;
