@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { importFiles, type ImportOutcome } from "@/lib/store/import";
+import { importFiles, recomputeAll, type ImportOutcome } from "@/lib/store/import";
 import { deleteRide, listRides, type RideSummary } from "@/lib/store/rides";
 import { DEFAULT_SETTINGS, loadSettings } from "@/lib/rider-settings";
 
@@ -11,6 +11,7 @@ export function LibraryView() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [recomputing, setRecomputing] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
@@ -72,13 +73,33 @@ export function LibraryView() {
             ? `Importing ${progress.done} of ${progress.total}…`
             : "Drop .fit or .gpx files here"}
         </p>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={progress !== null}
-          className="rounded-md bg-[var(--brand)] px-3.5 py-2 text-[13px] font-medium text-[var(--brand-contrast)] disabled:opacity-60"
-        >
-          Choose files
-        </button>
+        <div className="flex items-center gap-2">
+          {rides && rides.length > 0 ? (
+            <button
+              onClick={async () => {
+                setRecomputing("Recomputing…");
+                const r = await recomputeAll(loadSettings() ?? DEFAULT_SETTINGS, (d, t) =>
+                  setRecomputing(`Recomputing ${d} of ${t}…`),
+                );
+                setRecomputing(null);
+                setOutcome({ added: 0, replaced: r.updated, failed: [] });
+                refresh();
+              }}
+              disabled={recomputing !== null || progress !== null}
+              title="Re-run the power model and metrics over the rides already stored here"
+              className="rounded-md border border-hairline bg-surface-2 px-3 py-2 text-[12px] font-medium text-ink transition-colors hover:bg-surface-3 disabled:opacity-60"
+            >
+              {recomputing ?? "Recompute all"}
+            </button>
+          ) : null}
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={progress !== null}
+            className="rounded-md bg-[var(--brand)] px-3.5 py-2 text-[13px] font-medium text-[var(--brand-contrast)] disabled:opacity-60"
+          >
+            Choose files
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"

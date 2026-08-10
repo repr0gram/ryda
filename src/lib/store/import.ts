@@ -45,6 +45,80 @@ export async function importRide(
   });
 }
 
+/**
+ * Recompute every stored ride's metrics from its saved streams.
+ *
+ * Summaries are denormalised at import so the library and trend never touch
+ * sample data — which means they go stale whenever the power model or the
+ * rider's settings change. Re-importing the original files would work, but the
+ * streams are already here, so asking someone to hunt down a year of .fit files
+ * to pick up a bug fix would be absurd.
+ */
+export async function recomputeAll(
+  settings: RiderSettings,
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ updated: number; failed: number }> {
+  const { listRides, getStreams, saveRide } = await import("./rides");
+  const rides = await listRides();
+  const profile = toProfile(settings);
+  let updated = 0;
+  let failed = 0;
+
+  for (let i = 0; i < rides.length; i++) {
+    const summary = rides[i];
+    onProgress?.(i + 1, rides.length);
+    try {
+      const stored = await getStreams(summary.id);
+      if (!stored) {
+        failed++;
+        continue;
+      }
+      const { watts, confidence } = estimatePower(stored.streams, stored.meta, profile);
+      const metrics = computeRideMetrics({
+        watts,
+        time: stored.streams.time,
+        distance: stored.streams.distance,
+        altitude: stored.streams.altitude,
+        heartrate: stored.streams.heartrate,
+        paused: stored.streams.paused,
+        ftp: profile.ftp,
+      });
+
+      await saveRide({
+        ride: {
+          streams: stored.streams,
+          meta: stored.meta,
+          name: summary.name,
+          startedAt: summary.startedAt,
+          sport: summary.sport,
+          hasMeasuredPower: summary.hasMeasuredPower,
+          devices: summary.devices,
+          gapSeconds: 0,
+          reported: {},
+        },
+        summary: {
+          durationSeconds: metrics.durationSeconds,
+          movingSeconds: metrics.movingSeconds,
+          distanceMeters: metrics.distanceMeters,
+          elevationGainMeters: metrics.elevationGainMeters,
+          meanPower: metrics.meanPower,
+          weightedPower: metrics.weightedPower,
+          load: metrics.load,
+          meanHeartRate: metrics.meanHeartRate,
+          decouplingPercent: metrics.decoupling?.percent ?? null,
+          confidence: confidence.level,
+        },
+      });
+      updated++;
+    } catch {
+      failed++;
+    }
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  return { updated, failed };
+}
+
 export interface ImportProgress {
   file: string;
   index: number;

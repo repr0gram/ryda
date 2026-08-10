@@ -217,6 +217,63 @@ describe("estimatePower", () => {
     expect(confidence.flags).toEqual([]);
   });
 
+  test("a GPS speed glitch cannot produce a five-figure wattage", () => {
+    // Drag scales with v^3, so one bad fix reading 120 m/s is ~350 kW.
+    // Ride length matters here: smoothing spreads one glitch across a few
+    // samples, which is a rounding error over an hour but a sixth of a short
+    // ride. An hour is the realistic case.
+    const { streams, meta } = syntheticRide({
+      seconds: 3600,
+      speed: 8,
+      grade: 0,
+      cadence: 85,
+    });
+    streams.speed![1800] = 120;
+    const { watts, confidence } = estimatePower(streams, meta, PROFILE);
+    for (const w of watts) expect(w).toBeLessThanOrEqual(2000);
+    // An isolated fix is noise, not a broken trace.
+    expect(confidence.flags).not.toContain("glitchy-gps");
+  });
+
+  test("resuming after a pause does not invent a sprint", () => {
+    // The spike this guards against was self-inflicted: normalising inserts a
+    // zero for paused time, so resuming reads as 0 -> 9 m/s in one second —
+    // roughly 900 N of phantom force, thousands of watts, after every stop.
+    const { streams, meta } = syntheticRide({
+      seconds: 400,
+      speed: 9,
+      grade: 0,
+      cadence: 85,
+    });
+    const paused = new Uint8Array(meta.n);
+    for (let i = 150; i < 250; i++) {
+      paused[i] = 1;
+      streams.speed![i] = 0;
+      streams.cadence![i] = 0;
+    }
+    streams.paused = paused;
+
+    const { watts } = estimatePower(streams, meta, PROFILE);
+    const steady = watts[80];
+    // Every sample around the resume must stay near the steady-state value.
+    for (let i = 248; i <= 256; i++) {
+      expect(watts[i]).toBeLessThan(steady * 2.5);
+    }
+  });
+
+  test("a persistently jumpy trace is flagged rather than silently clamped", () => {
+    const { streams, meta } = syntheticRide({
+      seconds: 600,
+      speed: 8,
+      grade: 0,
+      cadence: 85,
+    });
+    for (let i = 0; i < meta.n; i += 40) streams.speed![i] = 90;
+    const { confidence } = estimatePower(streams, meta, PROFILE);
+    expect(confidence.flags).toContain("glitchy-gps");
+    expect(confidence.level).not.toBe("high");
+  });
+
   test("flags an implausible watts-per-heartbeat even when the shape tracks", () => {
     // A real ride averaged 98 W at 159 bpm (~0.6 W/bpm) and was still being
     // reported as high confidence, because only the correlation was checked.

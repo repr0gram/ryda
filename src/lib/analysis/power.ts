@@ -29,6 +29,53 @@ const MAX_GRADE = 0.25;
 const MIN_GRADE_SPAN_M = 5;
 
 /**
+ * Physical guards against data artefacts.
+ *
+ * Estimated power is a cubic function of speed and a linear function of
+ * acceleration, so a single bad GPS fix does not produce a slightly wrong
+ * number — it produces 10,000 W. One such sample distorts the maximum, the
+ * power curve, and every peak-power figure derived from them.
+ *
+ * These are not tuning knobs. They are the boundaries of what a person on a
+ * bicycle can do, and a sample outside them is a measurement error.
+ */
+
+/** 108 km/h. Faster than this on a road bike is a position glitch. */
+const MAX_SPEED_MS = 30;
+/**
+ * A standing-start sprint reaches roughly 3 m/s²; sustained values above this
+ * are differentiation noise, not riding.
+ */
+const MAX_ACCEL_MS2 = 4;
+/**
+ * Track sprinters peak near 2,500 W for a second or two. An *estimate* above
+ * 2,000 W is an artefact, not an achievement — and this model has no business
+ * claiming a sprint it cannot see.
+ */
+const MAX_PLAUSIBLE_WATTS = 2000;
+
+/** Half-window used to smooth speed before differentiating it. */
+const SPEED_SMOOTH_HALF_WINDOW = 2;
+
+/**
+ * Widen a boolean mask by `radius` samples in both directions.
+ *
+ * Used so a pause's influence covers everything the smoothing window can reach,
+ * not just the paused samples themselves.
+ */
+function dilate(mask: Uint8Array | undefined, radius: number): Uint8Array | undefined {
+  if (!mask) return undefined;
+  const out = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    const lo = Math.max(0, i - radius);
+    const hi = Math.min(mask.length - 1, i + radius);
+    for (let j = lo; j <= hi; j++) out[j] = 1;
+  }
+  return out;
+}
+
+/**
  * Air density from altitude, with a temperature correction when the device
  * recorded one.
  *
@@ -129,7 +176,7 @@ export function estimatePower(
   const n = meta.n;
   const watts = new Float32Array(n);
   if (n === 0) {
-    return { watts, confidence: scoreConfidence(streams, meta, watts) };
+    return { watts, confidence: scoreConfidence(streams, meta, watts, 0) };
   }
 
   const totalMass = profile.riderKg + profile.bikeKg;
@@ -143,12 +190,26 @@ export function estimatePower(
   // Speed gets a light smooth too, otherwise dv/dt is pure noise and the
   // kinetic term swamps everything else.
   const rawSpeed = streams.speed ?? deriveSpeed(streams);
-  const speed = movingAverage(rawSpeed, 2);
+  const speed = movingAverage(rawSpeed, SPEED_SMOOTH_HALF_WINDOW);
 
   const cadence = streams.cadence;
 
+  // Dilate the pause mask before using it to gate the kinetic term.
+  //
+  // Speed is smoothed over a +/-2 window and acceleration reads +/-1 around a
+  // sample, so the zeros inserted for a pause contaminate three samples past
+  // each edge. Guarding only the immediate neighbours leaves a ~1,200 W spike
+  // sitting just outside the pause — the exact artefact this is here to remove.
+  const paused = dilate(streams.paused, SPEED_SMOOTH_HALF_WINDOW + 1);
+
+  // Count affected SAMPLES, not clamp events: one bad fix trips the speed,
+  // acceleration and power guards at once, and counting each would make a
+  // single glitch look like a systematically broken trace.
+  const affected = new Uint8Array(n);
+
   for (let i = 0; i < n; i++) {
-    const v = speed[i];
+    const v = Math.min(speed[i], MAX_SPEED_MS);
+    if (speed[i] > MAX_SPEED_MS) affected[i] = 1;
     if (!(v > 0.5)) {
       // Stationary. Not coasting — genuinely stopped.
       watts[i] = 0;
@@ -175,19 +236,42 @@ export function estimatePower(
 
     const prev = Math.max(0, i - 1);
     const next = Math.min(n - 1, i + 1);
-    const dt = streams.time[next] - streams.time[prev];
-    const accel = dt > 0 ? (speed[next] - speed[prev]) / dt : 0;
-    const fKinetic = effectiveMass * accel;
+
+    // Acceleration must not be measured across a recording pause. Speed there
+    // is a zero WE inserted, so resuming looks like 0 -> 8 m/s in one second:
+    // ~900 N of phantom force and several thousand watts, at the start of every
+    // segment after every stop.
+    const crossesPause =
+      paused !== undefined && (paused[prev] === 1 || paused[next] === 1 || paused[i] === 1);
+
+    let fKinetic = 0;
+    if (!crossesPause) {
+      const dt = streams.time[next] - streams.time[prev];
+      let accel = dt > 0 ? (speed[next] - speed[prev]) / dt : 0;
+      if (accel > MAX_ACCEL_MS2 || accel < -MAX_ACCEL_MS2) {
+        accel = Math.max(-MAX_ACCEL_MS2, Math.min(MAX_ACCEL_MS2, accel));
+        affected[i] = 1;
+      }
+      fKinetic = effectiveMass * accel;
+    }
 
     const pWheel = (fGravity + fRolling + fDrag + fKinetic) * v;
     const pLegs = pWheel / profile.drivetrainEfficiency;
 
     // Negative power is braking or coasting, not a contribution. Clamping here
     // keeps it out of averages, the curve, and Weighted Power.
-    watts[i] = pLegs > 0 ? pLegs : 0;
+    if (pLegs > MAX_PLAUSIBLE_WATTS) {
+      watts[i] = MAX_PLAUSIBLE_WATTS;
+      affected[i] = 1;
+    } else {
+      watts[i] = pLegs > 0 ? pLegs : 0;
+    }
   }
 
-  return { watts, confidence: scoreConfidence(streams, meta, watts) };
+  let artefacts = 0;
+  for (let i = 0; i < n; i++) if (affected[i]) artefacts++;
+
+  return { watts, confidence: scoreConfidence(streams, meta, watts, artefacts) };
 }
 
 /**
@@ -201,8 +285,14 @@ function scoreConfidence(
   streams: RideStreams,
   meta: RideMeta,
   watts: Float32Array,
+  artefacts: number,
 ): PowerConfidence {
   const flags: ConfidenceFlag[] = [];
+
+  // A handful of clamped samples is normal GPS noise. A sustained rate of them
+  // means the position trace is unreliable and everything derived from speed
+  // should be treated with suspicion.
+  if (meta.n > 0 && artefacts / meta.n > 0.005) flags.push("glitchy-gps");
 
   if (meta.altitudeSource !== "barometric") flags.push("gps-altitude");
   if (!streams.cadence) flags.push("no-cadence");
@@ -269,6 +359,8 @@ const FLAG_TEXT: Record<ConfidenceFlag, string> = {
     "heart rate doesn't track the estimate, which usually means wind or drafting",
   "hr-power-implausible":
     "the watts per heartbeat fall outside what any rider produces, which points at the model being mis-scaled rather than at the ride — check rider weight and riding position in settings",
+  "glitchy-gps":
+    "the position trace jumps around, so speed and therefore power are unreliable in places",
   "sustained-high-speed":
     "long stretches of high speed on flat ground, typical of riding in a group",
   "sparse-sampling": "the device recorded too infrequently to model acceleration",

@@ -16,6 +16,9 @@ import type { RideStreams } from "@/lib/analysis/types";
 
 const GAP_THRESHOLD_S = 5;
 
+/** 108 km/h. A GPX step implying more than this is a bad fix, not a descent. */
+const MAX_PLAUSIBLE_SPEED_MS = 30;
+
 export function parseGpx(xml: string): ParsedRide {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   const parseError = doc.querySelector("parsererror");
@@ -62,9 +65,31 @@ export function parseGpx(xml: string): ParsedRide {
   const temperature = hasTemp ? new Float32Array(n) : undefined;
 
   // GPX carries no distance channel, so integrate it from the coordinates.
+  //
+  // A bad position fix — an urban canyon, a tunnel exit, a phone waking up —
+  // teleports the track by hundreds of metres. Integrated naively that becomes
+  // a one-second speed of 300 m/s, and since aerodynamic drag scales with the
+  // cube of speed, a single bad fix becomes a five-figure wattage that poisons
+  // the power curve and every peak figure derived from it.
+  //
+  // A jump that would require a superhuman speed is a measurement error, so the
+  // rider is held in place for it rather than credited with the distance. That
+  // slightly under-reports a genuine tunnel transit, which is the safe
+  // direction.
   const cumulative = new Float64Array(timed.length);
+  let rejectedFixes = 0;
   for (let i = 1; i < timed.length; i++) {
-    cumulative[i] = cumulative[i - 1] + haversine(timed[i - 1], timed[i]);
+    const step = haversine(timed[i - 1], timed[i]);
+    const dt = Math.max(
+      1,
+      (Date.parse(timed[i].time!) - Date.parse(timed[i - 1].time!)) / 1000,
+    );
+    if (step / dt > MAX_PLAUSIBLE_SPEED_MS) {
+      cumulative[i] = cumulative[i - 1];
+      rejectedFixes++;
+      continue;
+    }
+    cumulative[i] = cumulative[i - 1] + step;
   }
 
   let cursor = 0;

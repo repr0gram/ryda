@@ -88,6 +88,7 @@ export type ConfidenceFlag =
   | "no-cadence"
   | "hr-power-decoupled"
   | "hr-power-implausible"
+  | "glitchy-gps"
   | "sustained-high-speed"
   | "sparse-sampling";
 
