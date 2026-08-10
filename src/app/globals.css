@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   Ryda design tokens
+
+   Every token is declared ONCE using light-dark(). Switching theme changes
+   `color-scheme` only — there is no duplicated light/dark block to drift apart.
+
+   Base is dark. The OS preference selects light; an explicit [data-theme]
+   attribute wins over both, in either direction.
+
+   Colour discipline:
+     - Chrome is monochrome + one brand violet. Violet NEVER encodes data.
+     - Colour belongs to data. Channel and ride hues are the only saturated
+       colour in a chart.
+     - Every channel/ride hue below was verified with the dataviz validator
+       against these exact surfaces (see docs/design-tokens.md for results).
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+  }
+}
+
+/* Must be on :root. Tokens below are declared on :root, and light-dark()
+   inside a custom property resolves against the color-scheme of the element
+   the property is DECLARED on — not where it's used. So a subtree cannot be
+   pinned to a theme by setting color-scheme on it; the theme is document-level. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root {
+  /* --- Surfaces: a 4-step ramp, never pure black or pure white ----------- */
+  --surface-page: light-dark(#faf9f7, #0b0c0e);
+  --surface-1: light-dark(#ffffff, #131417); /* cards, chart surface */
+  --surface-2: light-dark(#f4f2ee, #1a1c20); /* raised, inputs */
+  --surface-3: light-dark(#eae7e1, #23262b); /* hover, pressed */
+
+  /* --- Ink --------------------------------------------------------------- */
+  --ink-primary: light-dark(#14161a, #f5f6f7);
+  --ink-secondary: light-dark(#55595f, #a8adb5);
+  --ink-muted: light-dark(#7c8087, #7e848c); /* axis ticks, captions */
+
+  /* --- Lines: all recessive -------------------------------------------- */
+  --line-hairline: light-dark(rgba(20, 22, 26, 0.1), rgba(245, 246, 247, 0.09));
+  --line-grid: light-dark(#eeece7, #202329);
+  --line-axis: light-dark(#d6d2ca, #303439);
+
+  /* --- Brand: chrome only. Never a series. ------------------------------ */
+  --brand: light-dark(#4a3aa7, #9085e9);
+  --brand-contrast: light-dark(#ffffff, #0b0c0e);
+  --focus-ring: light-dark(#4a3aa7, #9085e9);
+
+  /* --- Data channels ----------------------------------------------------
+     Semantic and global: heart rate is this red in every chart, on the map
+     trace, and in every legend. Power↔HR is the pair that co-plots most, so
+     they take the two most-separated hues (blue vs red).
+     Floor-band CVD (ΔE 10.3 dark) is legal here because every channel row
+     ships a direct label + live value — identity is never colour-alone.     */
+  --ch-power: light-dark(#2a78d6, #3987e5);
+  --ch-hr: light-dark(#e34948, #e66767);
+  --ch-cadence: light-dark(#e87ba4, #d55181);
+  --ch-speed: light-dark(#008300, #008300);
+  --ch-temp: light-dark(#eb6834, #d95926);
+  --ch-wbal: light-dark(#eda100, #c98500);
+
+  /* Elevation is context, not identity — it renders as a recessive ghost
+     fill behind the active channel, so it takes chrome, not a hue slot. */
+  --ch-elevation: light-dark(#d8d3c9, #2b2f36);
+  --ch-elevation-line: light-dark(#bdb6a8, #3a3f47);
+
+  /* --- Ride identity (Compare mode) -------------------------------------
+     Compare plots ONE channel across N rides, so these never co-occur with
+     the channel hues above. Assigned in fixed slot order, never cycled;
+     a 7th ride folds into "others" rather than inventing a hue.            */
+  --ride-1: light-dark(#2a78d6, #3987e5);
+  --ride-2: light-dark(#1baf7a, #199e70);
+  --ride-3: light-dark(#eda100, #c98500);
+  --ride-4: light-dark(#008300, #008300);
+  --ride-5: light-dark(#4a3aa7, #9085e9);
+  --ride-6: light-dark(#e34948, #e66767);
+
+  /* --- Status: fixed, reserved, always paired with icon + label ---------
+     Used for ride power-confidence chips, never for a series.             */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* --- Radii ------------------------------------------------------------ */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* --- Elevation --------------------------------------------------------- */
+  --shadow-card: light-dark(
+    0 1px 2px rgba(20, 22, 26, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.4)
+  );
+  --shadow-pop: light-dark(
+    0 8px 24px -6px rgba(20, 22, 26, 0.14),
+    0 8px 24px -6px rgba(0, 0, 0, 0.6)
+  );
+}
+
+@theme inline {
+  --color-page: var(--surface-page);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-ink: var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+
+  --color-hairline: var(--line-hairline);
+  --color-grid: var(--line-grid);
+  --color-axis: var(--line-axis);
+
+  --color-brand: var(--brand);
+  --color-brand-contrast: var(--brand-contrast);
+
+  --color-ch-power: var(--ch-power);
+  --color-ch-hr: var(--ch-hr);
+  --color-ch-cadence: var(--ch-cadence);
+  --color-ch-speed: var(--ch-speed);
+  --color-ch-temp: var(--ch-temp);
+  --color-ch-wbal: var(--ch-wbal);
+  --color-ch-elevation: var(--ch-elevation);
+
+  --color-ride-1: var(--ride-1);
+  --color-ride-2: var(--ride-2);
+  --color-ride-3: var(--ride-3);
+  --color-ride-4: var(--ride-4);
+  --color-ride-5: var(--ride-5);
+  --color-ride-6: var(--ride-6);
+
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-serious: var(--status-serious);
+  --color-status-critical: var(--status-critical);
+
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+}
+
+/* ============================================================================
+   Base
+   ========================================================================== */
+
+body {
+  background: var(--surface-page);
+  color: var(--ink-primary);
+  font-family: var(--font-sans);
+  /* Data screens live or die on aligned numerals. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Large standalone figures (hero numbers, stat tiles) read better with
+   proportional figures; only columns need to align vertically. */
+.figure-hero {
+  font-variant-numeric: proportional-nums;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Motion only where it conveys state. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
