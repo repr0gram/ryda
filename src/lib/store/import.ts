@@ -1,5 +1,6 @@
 import { estimatePower } from "@/lib/analysis/power";
 import { computeRideMetrics } from "@/lib/analysis/metrics";
+import { buildPowerCurve } from "@/lib/analysis/curve";
 import type { ParsedRide } from "@/lib/ingest/fit";
 import { toProfile, type RiderSettings } from "@/lib/rider-settings";
 import { saveRide, type SaveResult } from "./rides";
@@ -28,8 +29,13 @@ export async function importRide(
     ftp: profile.ftp,
   });
 
+  // Cache the mean-maximal curve now so the power page is an element-wise max
+  // over small arrays instead of a re-scan of every ride's samples.
+  const curve = buildPowerCurve(watts).watts;
+
   return saveRide({
     ride,
+    curve,
     summary: {
       durationSeconds: metrics.durationSeconds,
       movingSeconds: metrics.movingSeconds,
@@ -84,7 +90,9 @@ export async function recomputeAll(
         ftp: profile.ftp,
       });
 
+      const curve = buildPowerCurve(watts).watts;
       await saveRide({
+        curve,
         ride: {
           streams: stored.streams,
           meta: stored.meta,

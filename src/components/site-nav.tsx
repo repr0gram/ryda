@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/", label: "Import" },
   { href: "/library", label: "Library" },
   { href: "/trend", label: "Trend" },
+  { href: "/power", label: "Power" },
 ] as const;
 
 export function SiteNav() {

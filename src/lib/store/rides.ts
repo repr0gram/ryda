@@ -19,9 +19,10 @@ import type { AltitudeSource, RideMeta, RideStreams } from "@/lib/analysis/types
  */
 
 const DB_NAME = "ryda";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const RIDES = "rides";
 const STREAMS = "streams";
+const CURVES = "curves";
 
 /** Row shown in the library and used by the trend chart. Small on purpose. */
 export interface RideSummary {
@@ -54,6 +55,20 @@ interface StreamRecord {
   streams: RideStreams;
 }
 
+interface CurveRecord {
+  id: string;
+  /** Local calendar day, so the power page can window by date cheaply. */
+  localDate: string;
+  /** Best mean power per duration, parallel to CURVE_DURATIONS. */
+  watts: Float32Array;
+}
+
+export interface DatedCurve {
+  id: string;
+  localDate: string;
+  watts: Float32Array;
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -66,6 +81,13 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STREAMS)) {
         db.createObjectStore(STREAMS, { keyPath: "id" });
+      }
+      // Mean-maximal curves live in their own store so the season envelope is
+      // an element-wise max over ~1 KB arrays rather than a re-scan of every
+      // ride's samples. Recomputing a year of curves from raw streams to draw
+      // one line would take seconds; this takes milliseconds.
+      if (!db.objectStoreNames.contains(CURVES)) {
+        db.createObjectStore(CURVES, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -120,6 +142,8 @@ export function toLocalDate(iso: string): string {
 
 export interface SaveRideInput {
   ride: ParsedRide;
+  /** Cached mean-maximal power curve for this ride. */
+  curve?: Float32Array;
   summary: Omit<
     RideSummary,
     | "id"
@@ -141,12 +165,12 @@ export interface SaveResult {
   replaced: boolean;
 }
 
-export async function saveRide({ ride, summary }: SaveRideInput): Promise<SaveResult> {
+export async function saveRide({ ride, summary, curve }: SaveRideInput): Promise<SaveResult> {
   const db = await openDb();
   const id = rideId(ride.startedAt, summary.durationSeconds);
 
   try {
-    return await tx(db, [RIDES, STREAMS], "readwrite", async (t) => {
+    return await tx(db, [RIDES, STREAMS, CURVES], "readwrite", async (t) => {
       const rides = t.objectStore(RIDES);
       const existing = await wrap<RideSummary | undefined>(rides.get(id));
 
@@ -166,6 +190,13 @@ export async function saveRide({ ride, summary }: SaveRideInput): Promise<SaveRe
 
       rides.put(row);
       t.objectStore(STREAMS).put({ id, streams: ride.streams } satisfies StreamRecord);
+      if (curve) {
+        t.objectStore(CURVES).put({
+          id,
+          localDate: row.localDate,
+          watts: curve,
+        } satisfies CurveRecord);
+      }
       return { id, replaced: existing !== undefined };
     });
   } finally {
@@ -205,12 +236,25 @@ export async function getStreams(
   }
 }
 
+/** Every cached curve, for building all-time and windowed envelopes. */
+export async function listCurves(): Promise<DatedCurve[]> {
+  const db = await openDb();
+  try {
+    return await tx(db, [CURVES], "readonly", (t) =>
+      wrap<DatedCurve[]>(t.objectStore(CURVES).getAll()),
+    );
+  } finally {
+    db.close();
+  }
+}
+
 export async function deleteRide(id: string): Promise<void> {
   const db = await openDb();
   try {
-    await tx(db, [RIDES, STREAMS], "readwrite", (t) => {
+    await tx(db, [RIDES, STREAMS, CURVES], "readwrite", (t) => {
       t.objectStore(RIDES).delete(id);
       t.objectStore(STREAMS).delete(id);
+      t.objectStore(CURVES).delete(id);
     });
   } finally {
     db.close();
@@ -220,9 +264,10 @@ export async function deleteRide(id: string): Promise<void> {
 export async function clearAll(): Promise<void> {
   const db = await openDb();
   try {
-    await tx(db, [RIDES, STREAMS], "readwrite", (t) => {
+    await tx(db, [RIDES, STREAMS, CURVES], "readwrite", (t) => {
       t.objectStore(RIDES).clear();
       t.objectStore(STREAMS).clear();
+      t.objectStore(CURVES).clear();
     });
   } finally {
     db.close();
