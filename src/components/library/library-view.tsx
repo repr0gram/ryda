@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { importFiles, recomputeAll, type ImportOutcome } from "@/lib/store/import";
-import { deleteRide, listRides, type RideSummary } from "@/lib/store/rides";
+import { clearAll, deleteRide, listRides, type RideSummary } from "@/lib/store/rides";
 import { DEFAULT_SETTINGS, loadSettings } from "@/lib/rider-settings";
 
 export function LibraryView() {
@@ -137,6 +137,28 @@ export function LibraryView() {
               ))}
             </ul>
           ) : null}
+        </div>
+      ) : null}
+
+      {rides && rides.length > 0 ? (
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={async () => {
+              if (
+                !confirm(
+                  `Remove all ${rides.length} stored rides from this browser? The original files are untouched.`,
+                )
+              ) {
+                return;
+              }
+              await clearAll();
+              setOutcome(null);
+              refresh();
+            }}
+            className="text-[12px] text-ink-muted transition-colors hover:text-[var(--status-critical)]"
+          >
+            Clear library
+          </button>
         </div>
       ) : null}
 
