@@ -1,6 +1,7 @@
 import type { ParsedRide } from "./fit";
 import { detectAltitudeSource } from "./fit";
 import type { RideStreams } from "@/lib/analysis/types";
+import { normaliseSport } from "./sport";
 
 /**
  * GPX ingestion.
@@ -159,13 +160,16 @@ export function parseGpx(xml: string): ParsedRide {
 
   const startedAt = new Date(t0 * 1000).toISOString();
   const name = doc.getElementsByTagName("name")[0]?.textContent?.trim();
+  // Strava writes <trk><type>walking</type>. Ignoring it meant every walk was
+  // analysed as a bike ride, cycling physics and all.
+  const sport = normaliseSport(doc.getElementsByTagName("type")[0]?.textContent);
 
   return {
     streams,
     meta: { altitudeSource: detectAltitudeSource(altitude), n },
-    name: name || "Ride",
+    name: name || "Activity",
     startedAt,
-    sport: "cycling",
+    sport,
     hasMeasuredPower: false,
     devices: [],
     gapSeconds,
@@ -180,14 +184,46 @@ function numberFrom(el: Element, tag: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
-/** Find a TrackPointExtension child by local name, ignoring the prefix. */
+/**
+ * Find a TrackPointExtension child by local name, ignoring the prefix.
+ *
+ * Heart rate lives at `<gpxtpx:hr>`. Whether `localName` reports "hr" or the
+ * full "gpxtpx:hr" depends on the XML parser, so match both — getting this
+ * wrong silently drops heart rate from every GPX, which in turn kills
+ * decoupling and heart-rate-based load without any error to notice.
+ */
 function extensionValue(pt: Element, localName: string): number | null {
   const ext = pt.getElementsByTagName("extensions")[0];
   if (!ext) return null;
-  for (const el of Array.from(ext.getElementsByTagName("*"))) {
-    if (el.localName === localName) {
-      const v = Number(el.textContent);
-      return Number.isFinite(v) ? v : null;
+  const found = findByLocalName(ext, localName);
+  if (found === null) return null;
+  const v = Number(found);
+  return Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Depth-first search for an element by local name, walking childNodes directly.
+ *
+ * Deliberately avoids `getElementsByTagName("*")`, which is not reliable across
+ * XML DOM implementations — it returns nothing at all under some parsers. That
+ * failure is silent: heart rate simply vanishes from every GPX, taking
+ * decoupling and heart-rate load with it, with no error anywhere.
+ */
+export function findByLocalName(root: Element, localName: string): string | null {
+  const suffix = `:${localName}`;
+  const stack: Element[] = [root];
+
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const children = node.childNodes;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as Element;
+      if (child.nodeType !== 1) continue;
+      const name = child.localName ?? child.nodeName ?? "";
+      if (name === localName || name.endsWith(suffix) || child.nodeName?.endsWith(suffix)) {
+        return child.textContent;
+      }
+      stack.push(child);
     }
   }
   return null;

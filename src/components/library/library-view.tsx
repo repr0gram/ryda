@@ -82,7 +82,7 @@ export function LibraryView() {
                   setRecomputing(`Recomputing ${d} of ${t}…`),
                 );
                 setRecomputing(null);
-                setOutcome({ added: 0, replaced: r.updated, failed: [] });
+                setOutcome({ added: 0, replaced: r.updated, skipped: [], failed: [] });
                 refresh();
               }}
               disabled={recomputing !== null || progress !== null}
@@ -117,8 +117,17 @@ export function LibraryView() {
         <div className="mt-3 rounded-lg border border-hairline bg-surface-1 px-4 py-3 text-[13px]">
           <span className="text-ink">
             {outcome.added} added, {outcome.replaced} updated
-            {outcome.failed.length > 0 ? `, ${outcome.failed.length} skipped` : ""}.
+            {outcome.skipped.length > 0
+              ? `, ${outcome.skipped.length} not rides`
+              : ""}
+            {outcome.failed.length > 0 ? `, ${outcome.failed.length} unreadable` : ""}.
           </span>
+          {outcome.skipped.length > 0 ? (
+            <p className="mt-1 text-[12px] text-ink-muted">
+              Walks, runs and anything else were left out — the power model is
+              bicycle physics and would report nonsense for them.
+            </p>
+          ) : null}
           {outcome.failed.length > 0 ? (
             <ul className="mt-2 space-y-0.5 text-[12px] text-ink-muted">
               {outcome.failed.slice(0, 5).map((f) => (

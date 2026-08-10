@@ -101,8 +101,8 @@ export async function parseFit(buffer: ArrayBuffer): Promise<ParsedRide> {
     parser.parse(buffer, (err, d) => (err ? reject(err) : resolve(d)));
   });
 
-  const records = (data.records ?? []).filter(
-    (r) => r.timestamp !== undefined && r.timestamp !== null,
+  const records = coalesceBySecond(
+    (data.records ?? []).filter((r) => r.timestamp !== undefined && r.timestamp !== null),
   );
   if (records.length < 2) {
     throw new Error("This FIT file contains no usable ride records.");
@@ -118,6 +118,44 @@ export async function parseFit(buffer: ArrayBuffer): Promise<ParsedRide> {
 
 function toEpochSeconds(value: string | Date): number {
   return (value instanceof Date ? value.getTime() : Date.parse(value)) / 1000;
+}
+
+/**
+ * Merge records that share a timestamp into one sample.
+ *
+ * The FIT spec does not promise one record per second with every field set, and
+ * real writers exploit that. A Strava phone recording emits TWO records per
+ * timestamp: one carrying position, distance and speed, and one carrying only
+ * elapsed/timer time. Treated as separate samples, half the ride has no
+ * distance at all — a 6.0 km ride parsed as 4.4 km with zero moving time,
+ * because every other sample looked stationary.
+ *
+ * Merging by second, taking the first non-null value for each field, restores
+ * the intended sample. This is general: any device interleaving partial records
+ * benefits, and files that already have one clean record per second are
+ * unaffected.
+ */
+function coalesceBySecond(records: FitRecord[]): FitRecord[] {
+  const bySecond = new Map<number, FitRecord>();
+
+  for (const record of records) {
+    const second = Math.round(toEpochSeconds(record.timestamp!));
+    const existing = bySecond.get(second);
+    if (!existing) {
+      bySecond.set(second, { ...record });
+      continue;
+    }
+    for (const [key, value] of Object.entries(record) as [keyof FitRecord, unknown][]) {
+      if (value === null || value === undefined) continue;
+      if (existing[key] === null || existing[key] === undefined) {
+        (existing as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  return [...bySecond.keys()]
+    .sort((a, b) => a - b)
+    .map((second) => bySecond.get(second)!);
 }
 
 /**
