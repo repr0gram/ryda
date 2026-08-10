@@ -52,6 +52,7 @@ export function parseGpx(xml: string): ParsedRide {
   const altitude = new Float64Array(n);
   const latlng = new Float64Array(n * 2);
   const speed = new Float32Array(n);
+  const paused = new Uint8Array(n);
 
   const hasHr = timed.some((p) => p.hr != null);
   const hasCad = timed.some((p) => p.cad != null);
@@ -86,6 +87,7 @@ export function parseGpx(xml: string): ParsedRide {
 
     if (span > GAP_THRESHOLD_S && t > curT) {
       gapSeconds += 1;
+      paused[i] = 1;
       distance[i] = cumulative[cursor];
       altitude[i] = cur.ele ?? 0;
       latlng[i * 2] = cur.lat;
@@ -127,6 +129,7 @@ export function parseGpx(xml: string): ParsedRide {
     heartrate,
     cadence,
     temperature,
+    paused,
   };
 
   const startedAt = new Date(t0 * 1000).toISOString();

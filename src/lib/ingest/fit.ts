@@ -138,6 +138,8 @@ function normalise(
   const altitude = new Float64Array(n);
   const latlng = new Float64Array(n * 2);
   const speed = new Float32Array(n);
+  // Marks which samples we invented to fill a recording pause.
+  const paused = new Uint8Array(n);
 
   const hasHr = records.some((r) => r.heart_rate != null);
   const hasCadence = records.some((r) => r.cadence != null);
@@ -179,6 +181,7 @@ function normalise(
     if (inGap) {
       // Stopped (or signal lost). Hold position and distance; zero the speed.
       gapSeconds += 1;
+      paused[i] = 1;
       distance[i] = lastDistance;
       altitude[i] = lastAltitude;
       speed[i] = 0;
@@ -233,6 +236,7 @@ function normalise(
       cadence,
       temperature,
       power,
+      paused,
     },
     meta: { altitudeSource: detectAltitudeSource(altitude), n },
     name: describeRide(startedAt, session.sport),

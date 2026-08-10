@@ -24,6 +24,7 @@ export async function importRide(
     distance: ride.streams.distance,
     altitude: ride.streams.altitude,
     heartrate: ride.streams.heartrate,
+    paused: ride.streams.paused,
     ftp: profile.ftp,
   });
 

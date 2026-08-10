@@ -85,6 +85,57 @@ suite("parseFit against a real device file", () => {
     expect(meta.n).toBeGreaterThan(0);
   });
 
+  test("paused samples are marked and excluded from averages", async () => {
+    const ride = await loadFixture();
+    const paused = ride.streams.paused!;
+    let pausedCount = 0;
+    for (const p of paused) if (p) pausedCount++;
+
+    // This file has roughly 80 minutes of stops inside a 5h47 elapsed window.
+    expect(pausedCount).toBeGreaterThan(1000);
+    expect(pausedCount).toBeCloseTo(ride.gapSeconds, -2);
+
+    const { watts } = estimatePower(ride.streams, ride.meta, DEFAULT_PROFILE);
+    const base = {
+      watts,
+      time: ride.streams.time,
+      distance: ride.streams.distance,
+      altitude: ride.streams.altitude,
+      heartrate: ride.streams.heartrate,
+      ftp: 250,
+    };
+    const withPauses = computeRideMetrics(base);
+    const excluded = computeRideMetrics({ ...base, paused });
+
+    // Including invented zeros drags every average down by a large margin —
+    // this was reporting 61 W where the physics says ~89 W.
+    expect(excluded.meanPower).toBeGreaterThan(withPauses.meanPower * 1.15);
+    expect(excluded.weightedPower).toBeGreaterThan(withPauses.weightedPower);
+    expect(excluded.meanHeartRate!).toBeGreaterThan(withPauses.meanHeartRate!);
+
+    // Total work is a sum, so it must NOT change — paused samples are zero.
+    expect(excluded.kilojoules).toBeCloseTo(withPauses.kilojoules, 6);
+  });
+
+  test("mean power is consistent with steady-state physics for the ride's speed", async () => {
+    const ride = await loadFixture();
+    const { watts } = estimatePower(ride.streams, ride.meta, DEFAULT_PROFILE);
+    const m = computeRideMetrics({
+      watts,
+      time: ride.streams.time,
+      distance: ride.streams.distance,
+      altitude: ride.streams.altitude,
+      paused: ride.streams.paused,
+      ftp: 250,
+    });
+    // 23.8 km/h on the flat for an 84 kg system is ~89 W of steady-state drag
+    // plus rolling resistance. Coasting zeros pull the mean under that, but not
+    // by half — that signature is paused time leaking in.
+    const meanSpeed = m.distanceMeters / m.movingSeconds;
+    expect(meanSpeed).toBeGreaterThan(6);
+    expect(m.meanPower).toBeGreaterThan(70);
+  });
+
   test("this ride has no power meter, so estimation is required", async () => {
     const ride = await loadFixture();
     expect(ride.hasMeasuredPower).toBe(false);

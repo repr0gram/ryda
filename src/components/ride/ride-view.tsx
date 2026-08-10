@@ -68,6 +68,7 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
       distance: streams.distance.subarray(from, to),
       altitude: streams.altitude.subarray(from, to),
       heartrate: streams.heartrate?.subarray(from, to),
+      paused: streams.paused?.subarray(from, to),
       ftp,
     });
   }, [power.watts, streams, meta.n, selection, ftp]);
@@ -121,7 +122,7 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
         </div>
       </header>
 
-      <StatRow metrics={metrics} ftp={ftp} />
+      <StatRow metrics={metrics} ftp={ftp} riderKg={settings.configured ? settings.riderKg : undefined} />
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface-1">

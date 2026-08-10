@@ -43,7 +43,7 @@ export function RiderSettingsPanel({
   }, [open]);
 
   const update = (patch: Partial<RiderSettings>) => {
-    const next = { ...settings, ...patch };
+    const next = { ...settings, ...patch, configured: true };
     onChange(next);
     saveSettings(next);
   };
@@ -55,16 +55,24 @@ export function RiderSettingsPanel({
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="rounded-md border border-hairline bg-surface-2 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:bg-surface-3"
+        className={[
+          "rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
+          settings.configured
+            ? "border-hairline bg-surface-2 text-ink hover:bg-surface-3"
+            : // Unset mass is the single largest source of wrong watts, so it
+              // gets the brand colour until it's dealt with.
+              "border-[var(--brand)] bg-[var(--brand)] text-[var(--brand-contrast)]",
+        ].join(" ")}
       >
-        {totalKg} kg · {settings.ftp} W
+        {settings.configured ? `${totalKg} kg · ${settings.ftp} W` : "Set your weight"}
       </button>
 
       {open ? (
         <div className="absolute right-0 z-20 mt-2 w-[300px] rounded-xl border border-hairline bg-surface-1 p-4 shadow-[var(--shadow-pop)]">
           <p className="text-[12px] leading-relaxed text-ink-secondary">
-            Power is modelled, so these values scale it directly. Getting mass and
-            position right matters more than anything else here.
+            {settings.configured
+              ? "Power is modelled, so these values scale it directly. Mass and position matter more than anything else here."
+              : "Until you set these, power is modelled against a default 75 kg rider — so every wattage on screen is a guess about someone else."}
           </p>
 
           <div className="mt-4 space-y-3.5">

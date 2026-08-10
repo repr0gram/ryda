@@ -4,7 +4,15 @@ import type { RideMetrics } from "@/lib/analysis/metrics";
  * The headline numbers. Every one of these recomputes when a range is selected,
  * so the row always describes exactly what is on screen.
  */
-export function StatRow({ metrics, ftp }: { metrics: RideMetrics; ftp: number }) {
+export function StatRow({
+  metrics,
+  ftp,
+  riderKg,
+}: {
+  metrics: RideMetrics;
+  ftp: number;
+  riderKg?: number;
+}) {
   const stats: { label: string; value: string; unit?: string; hint?: string }[] = [
     {
       label: "Distance",
@@ -33,11 +41,19 @@ export function StatRow({ metrics, ftp }: { metrics: RideMetrics; ftp: number })
       value: Math.round(metrics.load).toString(),
       hint: "100 = one hour at threshold",
     },
-    {
-      label: "Work",
-      value: Math.round(metrics.kilojoules).toLocaleString("en-GB"),
-      unit: "kJ",
-    },
+    riderKg
+      ? {
+          // W/kg is how cyclists actually compare efforts, and it is the number
+          // that makes the mass setting legible.
+          label: "Weighted W/kg",
+          value: (metrics.weightedPower / riderKg).toFixed(2),
+          hint: `at ${riderKg} kg`,
+        }
+      : {
+          label: "Work",
+          value: Math.round(metrics.kilojoules).toLocaleString("en-GB"),
+          unit: "kJ",
+        },
     metrics.decoupling
       ? {
           label: "Decoupling",

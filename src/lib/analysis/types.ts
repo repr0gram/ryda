@@ -26,6 +26,16 @@ export interface RideStreams {
   speed?: Float32Array;
   /** Degrees Celsius. */
   temperature?: Float32Array;
+  /**
+   * 1 where the recording was paused and the sample is filler, 0 where it is
+   * real data.
+   *
+   * Normalising to a uniform 1 Hz grid means inventing samples for the time the
+   * device was stopped. Those samples must not enter any average: a ride with
+   * 80 minutes of cafe stops would otherwise report a mean power a third lower
+   * than the rider ever produced.
+   */
+  paused?: Uint8Array;
 }
 
 export type AltitudeSource = "barometric" | "gps" | "dem";

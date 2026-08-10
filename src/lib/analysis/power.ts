@@ -226,17 +226,22 @@ function scoreConfidence(
       if (Number.isFinite(r) && r < 0.3) flags.push("hr-power-decoupled");
 
       // Shape agreement is not enough — the LEVEL has to be plausible too.
-      // Efficiency factor (watts per beat) is roughly 1.2–2.5 for a trained
-      // cyclist. Well under that means the model is under-reading: usually a
-      // rider mass that is too low, a CdA that is too small, or a headwind.
-      // Without this check a ride can average 98 W at 159 bpm and still be
-      // reported as high confidence, which is exactly the fake precision this
-      // whole feature exists to avoid.
-      const meanHr = meanOf(hr);
-      const meanW = meanOf(watts);
-      if (meanHr > 110 && meanW > 0) {
-        const efficiency = meanW / meanHr;
-        if (efficiency < 0.9 || efficiency > 3.5) flags.push("hr-power-implausible");
+      //
+      // Efficiency factor is conventionally weighted power over average heart
+      // rate. The bounds below are deliberately wide: EF runs 1.2-2.5 for a
+      // trained cyclist, but that describes fitness, not physics. A heavier or
+      // less-trained rider genuinely sits under it, and flagging them would be
+      // the app calling a correct reading wrong. Only values outside what any
+      // rider could produce point at a mis-scaled model — in practice a rider
+      // mass or drag area set far too low.
+      //
+      // Both terms skip paused filler, or a ride with long stops looks
+      // mis-scaled purely because of zeros we inserted ourselves.
+      const meanHr = meanOf(hr, streams.paused);
+      const weighted = weightedPowerOf(watts, streams.paused);
+      if (meanHr > 110 && weighted > 0) {
+        const ef = weighted / meanHr;
+        if (ef < 0.6 || ef > 4) flags.push("hr-power-implausible");
       }
     }
   }
@@ -263,7 +268,7 @@ const FLAG_TEXT: Record<ConfidenceFlag, string> = {
   "hr-power-decoupled":
     "heart rate doesn't track the estimate, which usually means wind or drafting",
   "hr-power-implausible":
-    "the watts per heartbeat are outside a believable range — check your weight and riding position in settings, since the model is probably mis-scaled",
+    "the watts per heartbeat fall outside what any rider produces, which points at the model being mis-scaled rather than at the ride — check rider weight and riding position in settings",
   "sustained-high-speed":
     "long stretches of high speed on flat ground, typical of riding in a group",
   "sparse-sampling": "the device recorded too infrequently to model acceleration",
@@ -281,11 +286,38 @@ function summarise(level: ConfidenceLevel, flags: ConfidenceFlag[]): string {
   return `Treat with caution — ${joined}.`;
 }
 
-/** Mean over finite, positive samples. */
-function meanOf(values: ArrayLike<number>): number {
+/**
+ * Weighted power over the moving samples only.
+ *
+ * Duplicated from metrics.ts rather than imported: metrics depends on the power
+ * estimate, so reaching the other way would be a cycle. It is a handful of
+ * lines and the definition is fixed.
+ */
+function weightedPowerOf(watts: ArrayLike<number>, paused?: Uint8Array): number {
+  const moving: number[] = [];
+  for (let i = 0; i < watts.length; i++) {
+    if (!paused?.[i]) moving.push(watts[i]);
+  }
+  if (moving.length === 0) return 0;
+
+  const window = 30;
+  let sum = 0;
+  let total = 0;
+  for (let i = 0; i < moving.length; i++) {
+    sum += moving[i];
+    if (i >= window) sum -= moving[i - window];
+    const mean = sum / window;
+    total += mean ** 4;
+  }
+  return (total / moving.length) ** 0.25;
+}
+
+/** Mean over finite, positive samples, skipping paused filler. */
+function meanOf(values: ArrayLike<number>, paused?: Uint8Array): number {
   let sum = 0;
   let count = 0;
   for (let i = 0; i < values.length; i++) {
+    if (paused?.[i]) continue;
     if (Number.isFinite(values[i]) && values[i] > 0) {
       sum += values[i];
       count++;

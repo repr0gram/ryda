@@ -35,6 +35,14 @@ export interface RiderSettings {
   positionId: string;
   surfaceId: string;
   ftp: number;
+  /**
+   * False until the rider has actually entered their details.
+   *
+   * A silent default produces confidently wrong watts — mass scales the whole
+   * estimate — so the UI needs to know the difference between "75 kg because
+   * they weigh 75 kg" and "75 kg because nobody asked".
+   */
+  configured: boolean;
 }
 
 export const DEFAULT_SETTINGS: RiderSettings = {
@@ -43,6 +51,7 @@ export const DEFAULT_SETTINGS: RiderSettings = {
   positionId: "hoods",
   surfaceId: "road",
   ftp: 250,
+  configured: false,
 };
 
 export function toProfile(settings: RiderSettings): RiderProfile {
@@ -92,5 +101,6 @@ function sanitise(s: RiderSettings): RiderSettings {
       ? s.surfaceId
       : DEFAULT_SETTINGS.surfaceId,
     ftp: clamp(s.ftp, 50, 600, DEFAULT_SETTINGS.ftp),
+    configured: s.configured === true,
   };
 }

@@ -171,12 +171,45 @@ export interface ComputeMetricsInput {
   distance: Float64Array;
   altitude: Float64Array;
   heartrate?: Float32Array;
+  /** 1 where the sample was invented to fill a recording pause. */
+  paused?: Uint8Array;
   ftp?: number;
 }
 
+/**
+ * Drop samples that only exist because the recording was paused.
+ *
+ * This is not a nicety. A real 105 km ride with ~80 minutes of stops reported a
+ * mean of 61 W where steady-state physics says ~89 W, purely because a third of
+ * the samples were zeros we had inserted ourselves. Every average, and Weighted
+ * Power's 30-second window, has to see only real riding.
+ */
+function compact(
+  watts: Float32Array,
+  heartrate: Float32Array | undefined,
+  paused: Uint8Array | undefined,
+): { watts: Float32Array; heartrate?: Float32Array } {
+  if (!paused) return { watts, heartrate };
+  let keep = 0;
+  for (let i = 0; i < watts.length; i++) if (!paused[i]) keep++;
+  if (keep === watts.length) return { watts, heartrate };
+
+  const w = new Float32Array(keep);
+  const h = heartrate ? new Float32Array(keep) : undefined;
+  let j = 0;
+  for (let i = 0; i < watts.length; i++) {
+    if (paused[i]) continue;
+    w[j] = watts[i];
+    if (h && heartrate) h[j] = heartrate[i];
+    j++;
+  }
+  return { watts: w, heartrate: h };
+}
+
 export function computeRideMetrics(input: ComputeMetricsInput): RideMetrics {
-  const { watts, time, distance, altitude, heartrate, ftp } = input;
+  const { watts, time, distance, altitude, heartrate, paused, ftp } = input;
   const n = watts.length;
+  const moving = compact(watts, heartrate, paused);
 
   const durationSeconds = n > 1 ? time[n - 1] - time[0] : 0;
 
@@ -190,9 +223,14 @@ export function computeRideMetrics(input: ComputeMetricsInput): RideMetrics {
     if (dt > 0 && dd / dt > 0.5) movingSeconds += dt;
   }
 
-  const meanPower = average(watts);
-  const wp = weightedPower(watts);
-  const meanHr = heartrate ? averageFinitePositive(heartrate) : null;
+  const meanPower = average(moving.watts);
+  const wp = weightedPower(moving.watts);
+  const meanHr = moving.heartrate ? averageFinitePositive(moving.heartrate) : null;
+
+  // Total work is the sum over every sample — paused samples contribute zero
+  // anyway, so this stays correct without compaction.
+  let joules = 0;
+  for (let i = 0; i < n; i++) joules += watts[i];
 
   return {
     durationSeconds,
@@ -202,12 +240,14 @@ export function computeRideMetrics(input: ComputeMetricsInput): RideMetrics {
     meanPower,
     weightedPower: wp,
     intensity: ftp ? intensity(wp, ftp) : 0,
-    load: ftp ? load(durationSeconds, wp, ftp) : 0,
+    // Load is scaled by time actually ridden, not by wall-clock elapsed — a
+    // long lunch stop must not inflate the training cost of the ride.
+    load: ftp ? load(movingSeconds || durationSeconds, wp, ftp) : 0,
     variability: variability(wp, meanPower),
-    kilojoules: (meanPower * n) / 1000,
+    kilojoules: joules / 1000,
     meanHeartRate: meanHr,
     efficiency: meanHr ? efficiency(wp, meanHr) : null,
-    decoupling: heartrate ? decoupling(watts, heartrate) : null,
+    decoupling: moving.heartrate ? decoupling(moving.watts, moving.heartrate) : null,
   };
 }
 
