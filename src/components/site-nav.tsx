@@ -42,12 +42,17 @@ export function SiteNav() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <Link
-            href="/design"
-            className="text-[13px] text-ink-muted transition-colors hover:text-ink-secondary"
-          >
-            Tokens
-          </Link>
+          {/* The token reference is a tool for building this, not a place a
+              rider would ever want to go. Kept reachable at /design during
+              development, out of the way in production. */}
+          {process.env.NODE_ENV !== "production" ? (
+            <Link
+              href="/design"
+              className="text-[13px] text-ink-muted transition-colors hover:text-ink-secondary"
+            >
+              Tokens
+            </Link>
+          ) : null}
           <ThemeToggle />
         </div>
       </div>
