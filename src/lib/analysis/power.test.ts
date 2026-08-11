@@ -274,6 +274,25 @@ describe("estimatePower", () => {
     expect(confidence.level).not.toBe("high");
   });
 
+  test("speed-channel noise does not inflate power", () => {
+    // Two identical rides, one with a noisy speed channel. Because net kinetic
+    // work over a ride is zero but negative power is clamped away, symmetric
+    // noise is a one-way ratchet — it can only add watts. That made the same
+    // rider on the same roads score ~40% higher for recording on a phone
+    // instead of a head unit.
+    const clean = syntheticRide({ seconds: 1800, speed: 7, grade: 0, cadence: 85 });
+    const noisy = syntheticRide({ seconds: 1800, speed: 7, grade: 0, cadence: 85 });
+
+    // Deterministic zero-mean jitter, so the average speed is unchanged.
+    for (let i = 0; i < noisy.meta.n; i++) {
+      noisy.streams.speed![i] = 7 + (i % 2 === 0 ? 0.6 : -0.6);
+    }
+
+    const a = estimatePower(clean.streams, clean.meta, PROFILE);
+    const b = estimatePower(noisy.streams, noisy.meta, PROFILE);
+    expect(midMean(b.watts)).toBeLessThan(midMean(a.watts) * 1.15);
+  });
+
   test("flags an implausible watts-per-heartbeat even when the shape tracks", () => {
     // A real ride averaged 98 W at 159 bpm (~0.6 W/bpm) and was still being
     // reported as high confidence, because only the correlation was checked.

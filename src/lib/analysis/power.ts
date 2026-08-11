@@ -58,6 +58,29 @@ const MAX_PLAUSIBLE_WATTS = 2000;
 const SPEED_SMOOTH_HALF_WINDOW = 2;
 
 /**
+ * Half-window, in seconds, for the central difference that gives acceleration.
+ *
+ * This is the most consequential constant in the model, for a reason that is
+ * easy to miss: over a ride starting and ending at rest, net kinetic work is
+ * ZERO. Every acceleration is paid back by a deceleration. So the kinetic term
+ * should very nearly cancel over a ride — but negative total power is clamped
+ * to zero, which means symmetric noise in acceleration is not symmetric in
+ * effect. It is a one-way ratchet that only ever adds watts.
+ *
+ * The size of that bias therefore depends on how noisy the speed channel is,
+ * which is not a property of the rider at all. Measured across real files:
+ *
+ *   device speed (FIT)   mean |a| 0.10 m/s²   kinetic contribution 35 W
+ *   GPS-derived (GPX)    mean |a| 0.14-0.21   kinetic contribution 50-78 W
+ *
+ * The same rider on the same roads scored 40% higher purely for having
+ * recorded on a phone. Differentiating over seven seconds rather than two
+ * averages that noise down while still capturing real accelerations, which
+ * persist for seconds.
+ */
+const ACCEL_HALF_WINDOW_S = 3;
+
+/**
  * Widen a boolean mask by `radius` samples in both directions.
  *
  * Used so a pause's influence covers everything the smoothing window can reach,
@@ -200,7 +223,7 @@ export function estimatePower(
   // sample, so the zeros inserted for a pause contaminate three samples past
   // each edge. Guarding only the immediate neighbours leaves a ~1,200 W spike
   // sitting just outside the pause — the exact artefact this is here to remove.
-  const paused = dilate(streams.paused, SPEED_SMOOTH_HALF_WINDOW + 1);
+  const paused = dilate(streams.paused, SPEED_SMOOTH_HALF_WINDOW + ACCEL_HALF_WINDOW_S);
 
   // Count affected SAMPLES, not clamp events: one bad fix trips the speed,
   // acceleration and power guards at once, and counting each would make a
@@ -234,8 +257,8 @@ export function estimatePower(
     const vAir = v + headwind;
     const fDrag = 0.5 * profile.cda * rho * vAir * Math.abs(vAir);
 
-    const prev = Math.max(0, i - 1);
-    const next = Math.min(n - 1, i + 1);
+    const prev = Math.max(0, i - ACCEL_HALF_WINDOW_S);
+    const next = Math.min(n - 1, i + ACCEL_HALF_WINDOW_S);
 
     // Acceleration must not be measured across a recording pause. Speed there
     // is a zero WE inserted, so resuming looks like 0 -> 8 m/s in one second:
