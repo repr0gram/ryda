@@ -54,8 +54,10 @@ const MAX_ACCEL_MS2 = 4;
  */
 const MAX_PLAUSIBLE_WATTS = 2000;
 
-/** Half-window used to smooth speed before differentiating it. */
+/** Half-window used to smooth device-reported speed before differentiating. */
 const SPEED_SMOOTH_HALF_WINDOW = 2;
+/** Wider window for speed integrated from positions — see estimatePower. */
+const DERIVED_SPEED_SMOOTH_HALF_WINDOW = 5;
 
 /**
  * Half-window, in seconds, for the central difference that gives acceleration.
@@ -212,8 +214,18 @@ export function estimatePower(
 
   // Speed gets a light smooth too, otherwise dv/dt is pure noise and the
   // kinetic term swamps everything else.
+  //
+  // Speed integrated from positions or a distance channel is far noisier than
+  // speed a device measured, and irregular sampling makes it staircase: flat
+  // between fixes, then a step. Differentiated, that reads as a hard
+  // acceleration at every fix. One real file showed a variability index of 1.72
+  // over four steady hours purely from this. Derived speed therefore gets a
+  // wider window.
   const rawSpeed = streams.speed ?? deriveSpeed(streams);
-  const speed = movingAverage(rawSpeed, SPEED_SMOOTH_HALF_WINDOW);
+  const smoothHalfWindow = streams.speedIsDerived
+    ? DERIVED_SPEED_SMOOTH_HALF_WINDOW
+    : SPEED_SMOOTH_HALF_WINDOW;
+  const speed = movingAverage(rawSpeed, smoothHalfWindow);
 
   const cadence = streams.cadence;
 
@@ -223,7 +235,7 @@ export function estimatePower(
   // sample, so the zeros inserted for a pause contaminate three samples past
   // each edge. Guarding only the immediate neighbours leaves a ~1,200 W spike
   // sitting just outside the pause — the exact artefact this is here to remove.
-  const paused = dilate(streams.paused, SPEED_SMOOTH_HALF_WINDOW + ACCEL_HALF_WINDOW_S);
+  const paused = dilate(streams.paused, smoothHalfWindow + ACCEL_HALF_WINDOW_S);
 
   // Count affected SAMPLES, not clamp events: one bad fix trips the speed,
   // acceleration and power guards at once, and counting each would make a

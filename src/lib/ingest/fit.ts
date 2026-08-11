@@ -184,6 +184,7 @@ function normalise(
   const hasTemp = records.some((r) => r.temperature != null);
   const hasPower = records.some((r) => r.power != null);
   const hasPosition = records.some((r) => r.position_lat != null);
+  const hasSpeed = records.some((r) => speedOf(r) != null);
 
   const heartrate = hasHr ? new Float32Array(n) : undefined;
   const cadence = hasCadence ? new Float32Array(n) : undefined;
@@ -270,6 +271,7 @@ function normalise(
       altitude,
       latlng: hasPosition ? latlng : undefined,
       speed,
+      speedIsDerived: !hasSpeed,
       heartrate,
       cadence,
       temperature,

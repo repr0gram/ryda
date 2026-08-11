@@ -24,7 +24,7 @@ export function LibraryView() {
 
   const handleFiles = useCallback(
     async (files: File[]) => {
-      const usable = files.filter((f) => /\.(fit|gpx)$/i.test(f.name));
+      const usable = files.filter((f) => /\.(fit|gpx|tcx)(\.gz)?$/i.test(f.name));
       if (usable.length === 0) return;
       setOutcome(null);
       setProgress({ done: 0, total: usable.length });
@@ -103,7 +103,7 @@ export function LibraryView() {
         <input
           ref={inputRef}
           type="file"
-          accept=".fit,.gpx"
+          accept=".fit,.gpx,.tcx,.gz"
           multiple
           className="sr-only"
           onChange={(e) => {

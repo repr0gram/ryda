@@ -24,6 +24,14 @@ export interface RideStreams {
   power?: Float32Array;
   /** Metres per second. */
   speed?: Float32Array;
+  /**
+   * True when speed was integrated from positions or a distance channel rather
+   * than reported by the device.
+   *
+   * Derived speed is markedly noisier, and because negative power is clamped
+   * away that noise only ever adds watts. The estimator smooths it harder.
+   */
+  speedIsDerived?: boolean;
   /** Degrees Celsius. */
   temperature?: Float32Array;
   /**

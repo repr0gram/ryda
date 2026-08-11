@@ -39,6 +39,14 @@ export async function importRide(
     ftp: profile.ftp,
   });
 
+  // A file can be a valid, correctly-typed ride and still contain nothing
+  // analysable — a TCX recorded with a heart-rate strap alone has timestamps
+  // and beats but no distance at all. Storing it puts a row of zeros in the
+  // library and a zero-load day on the fitness curve.
+  if (metrics.distanceMeters < MIN_ANALYSABLE_METRES) {
+    throw new NoRideDataError(ride.name);
+  }
+
   // Cache the mean-maximal curve now so the power page is an element-wise max
   // over small arrays instead of a re-scan of every ride's samples.
   const curve = buildPowerCurve(watts).watts;
@@ -151,6 +159,17 @@ export interface ImportOutcome {
   failed: { file: string; reason: string }[];
 }
 
+/** Below this a file has no ride in it, whatever its headers claim. */
+const MIN_ANALYSABLE_METRES = 300;
+
+/** Thrown when a ride carries no usable distance — e.g. a strap-only recording. */
+export class NoRideDataError extends Error {
+  constructor(readonly rideName: string) {
+    super("no distance recorded");
+    this.name = "NoRideDataError";
+  }
+}
+
 /** Thrown when a file parses but is not a bike ride. */
 export class NotARideError extends Error {
   constructor(readonly sport: string) {
@@ -184,6 +203,8 @@ export async function importFiles(
     } catch (e) {
       if (e instanceof NotARideError) {
         outcome.skipped.push({ file: file.name, sport: e.sport });
+      } else if (e instanceof NoRideDataError) {
+        outcome.skipped.push({ file: file.name, sport: "no distance" });
       } else {
         outcome.failed.push({
           file: file.name,

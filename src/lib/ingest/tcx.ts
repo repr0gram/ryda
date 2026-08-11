@@ -23,6 +23,9 @@ import { findByLocalName } from "./gpx";
 
 const GAP_THRESHOLD_S = 30;
 
+/** 108 km/h. A distance step implying more than this is a bad fix. */
+const MAX_PLAUSIBLE_SPEED_MS = 30;
+
 interface Point {
   t: number;
   lat: number | null;
@@ -138,7 +141,25 @@ export function parseTcx(xml: string): ParsedRide {
     if (power) power[i] = lerp(cur.watts, next?.watts, 0);
   }
 
-  for (let i = 1; i < n; i++) speed[i] = Math.max(0, distance[i] - distance[i - 1]);
+  // Reject teleporting fixes rather than integrating them. One real file had
+  // single-second steps of 61 m — 221 km/h — and drag scales with the cube of
+  // speed, so those became four-figure wattages.
+  //
+  // TCX distance is CUMULATIVE from the device, so a rejected step cannot be
+  // handled by clamping the value in place: that shifts the origin for
+  // everything after it, making the next step enormous, which is then also
+  // rejected, and so on. A 91.5 km ride collapsed to 7.8 km that way.
+  // The whole series has to be rebuilt from accepted steps instead.
+  const corrected = new Float64Array(n);
+  let cumulative = 0;
+  for (let i = 1; i < n; i++) {
+    const step = distance[i] - distance[i - 1];
+    if (step > 0 && step <= MAX_PLAUSIBLE_SPEED_MS) cumulative += step;
+    corrected[i] = cumulative;
+  }
+  distance.set(corrected);
+
+  for (let i = 1; i < n; i++) speed[i] = distance[i] - distance[i - 1];
   if (n > 1) speed[0] = speed[1];
 
   const streams: RideStreams = {
@@ -147,6 +168,7 @@ export function parseTcx(xml: string): ParsedRide {
     altitude,
     latlng,
     speed,
+    speedIsDerived: true,
     heartrate,
     cadence,
     power,

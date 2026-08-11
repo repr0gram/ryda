@@ -27,18 +27,18 @@ export function FileDrop({
       setBusy(true);
       setError(null);
       try {
-        const lower = file.name.toLowerCase();
-        if (lower.endsWith(".fit")) {
-          const { parseFit } = await import("@/lib/ingest/fit");
-          onRide(await parseFit(await file.arrayBuffer()));
-        } else if (lower.endsWith(".gpx")) {
-          const { parseGpx } = await import("@/lib/ingest/gpx");
-          onRide(parseGpx(await file.text()));
-        } else {
+        // Format handling lives in one place. Duplicating it here is how .tcx
+        // and .gz support existed in the parser while the UI silently dropped
+        // every such file before it got there.
+        const { parseFile } = await import("@/lib/store/import");
+        const parsed = await parseFile(file);
+        const { isCycling } = await import("@/lib/ingest/sport");
+        if (!isCycling(parsed.sport)) {
           throw new Error(
-            `${file.name} isn't a format I can read yet. Drop a .fit or .gpx file.`,
+            `${file.name} is a ${parsed.sport} activity. This analyses rides — the power model is bicycle physics.`,
           );
         }
+        onRide(parsed);
       } catch (e) {
         setError(e instanceof Error ? e.message : "That file could not be read.");
       } finally {
@@ -86,9 +86,10 @@ export function FileDrop({
             compact ? "" : "mx-auto mt-2 max-w-md",
           ].join(" ")}
         >
-          <span className="font-mono text-[12px] text-ink">.fit</span> or{" "}
-          <span className="font-mono text-[12px] text-ink">.gpx</span>. Everything is
-          read in your browser — nothing is uploaded.
+          <span className="font-mono text-[12px] text-ink">.fit</span>,{" "}
+          <span className="font-mono text-[12px] text-ink">.gpx</span> or{" "}
+          <span className="font-mono text-[12px] text-ink">.tcx</span>, gzipped or
+          not. Everything is read in your browser — nothing is uploaded.
         </p>
 
         <div className={compact ? "mt-3" : "mt-5"}>
@@ -102,7 +103,7 @@ export function FileDrop({
           <input
             ref={inputRef}
             type="file"
-            accept=".fit,.gpx"
+            accept=".fit,.gpx,.tcx,.gz"
             className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];

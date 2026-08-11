@@ -152,6 +152,7 @@ export function parseGpx(xml: string): ParsedRide {
     altitude,
     latlng,
     speed,
+    speedIsDerived: true,
     heartrate,
     cadence,
     temperature,

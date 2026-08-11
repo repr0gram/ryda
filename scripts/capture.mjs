@@ -184,12 +184,11 @@ async function main() {
       selector: 'input[type="file"]',
     });
     if (!nodeId) throw new Error("no file input found on the page");
-    await cdp.send("DOM.setFileInputFiles", {
-      nodeId,
-      files: [resolve(upload)],
-    });
-    console.log(`uploaded ${upload}`);
-    await sleep(2500);
+    // Comma-separated so a whole library can be pushed through the real input.
+    const files = upload.split(",").map((f) => resolve(f.trim()));
+    await cdp.send("DOM.setFileInputFiles", { nodeId, files });
+    console.log(`uploaded ${files.length} file(s)`);
+    await sleep(Number(arg("uploadWait", 3000)));
   }
 
   if (waitFor) {
