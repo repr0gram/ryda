@@ -9,32 +9,58 @@ import {
   type PowerCurve,
 } from "@/lib/analysis/curve";
 import { elementwiseMax } from "@/lib/analysis/signal";
-import { listCurves, type DatedCurve } from "@/lib/store/rides";
+import { listCurves, listRides, type DatedCurve } from "@/lib/store/rides";
 import { DEFAULT_SETTINGS, loadSettings, type RiderSettings } from "@/lib/rider-settings";
 import { PowerCurveChart, formatDuration, type CurveSeries } from "./power-curve-chart";
 
-/** Durations worth calling out as headline efforts. */
-const HIGHLIGHTS = [5, 60, 300, 1200, 3600];
+/**
+ * Shortest duration this model has any business reporting, in seconds.
+ *
+ * Below about five minutes an estimate stops describing the rider. Two things
+ * dominate there and neither is effort: the kinetic term, which is
+ * differentiated GPS speed, and fast descents — without a cadence sensor there
+ * is no way to know the legs have stopped, and aerodynamic drag at 60 km/h
+ * computes to roughly 850 W whether you are sprinting or freewheeling.
+ *
+ * On a real library that produced a "best 5 seconds" of 13.3 W/kg for a rider
+ * whose threshold is 1.9 W/kg. Publishing that with a caveat underneath is
+ * worse than not publishing it: the number is not uncertain, it is fictional.
+ *
+ * A real power meter has none of these problems, so the full curve is shown
+ * whenever one is present.
+ */
+const MIN_ESTIMATED_DURATION_S = 300;
+
+const ESTIMATED_HIGHLIGHTS = [300, 600, 1200, 1800, 3600];
+const MEASURED_HIGHLIGHTS = [5, 60, 300, 1200, 3600];
 
 export function PowerView() {
   const [curves, setCurves] = useState<DatedCurve[] | null>(null);
   const [settings, setSettings] = useState<RiderSettings>(DEFAULT_SETTINGS);
+  const [hasMeter, setHasMeter] = useState(false);
 
   useEffect(() => {
     setSettings(loadSettings());
     listCurves()
       .then(setCurves)
       .catch(() => setCurves([]));
+    listRides()
+      .then((rides) => setHasMeter(rides.some((r) => r.hasMeasuredPower)))
+      .catch(() => setHasMeter(false));
   }, []);
+
+  // Estimated power is only meaningful from a few minutes upward, so the curve
+  // is trimmed rather than shown with a disclaimer nobody reads.
+  const floor = hasMeter ? 0 : MIN_ESTIMATED_DURATION_S;
 
   const { allTime, recent } = useMemo(() => {
     if (!curves || curves.length === 0) return { allTime: null, recent: null };
     const cutoff = daysAgo(90);
     return {
-      allTime: envelope(curves),
-      recent: envelope(curves.filter((c) => c.localDate >= cutoff)),
+      allTime: envelope(curves, floor),
+      recent: envelope(curves.filter((c) => c.localDate >= cutoff), floor),
     };
-  }, [curves]);
+  }, [curves, floor]);
 
   if (curves === null) {
     return <Shell><p className="text-[13px] text-ink-muted">Loading…</p></Shell>;
@@ -78,7 +104,7 @@ export function PowerView() {
       </div>
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-hairline bg-[var(--line-hairline)] sm:grid-cols-3 lg:grid-cols-5">
-        {HIGHLIGHTS.map((d) => {
+        {(hasMeter ? MEASURED_HIGHLIGHTS : ESTIMATED_HIGHLIGHTS).map((d) => {
           const w = powerAt(allTime, d);
           return (
             <div key={d} className="bg-surface-1 px-4 py-3">
@@ -203,16 +229,19 @@ export function PowerView() {
           The shape of the curve and how it moves over time are far more trustworthy
           than any single value on it.
         </p>
-        <p>
-          <span className="text-ink-secondary">
-            Treat anything under a minute with real suspicion.
-          </span>{" "}
-          Short efforts are dominated by the acceleration term, which is
-          differentiated GPS speed — the noisiest input in the whole model. Without a
-          power meter, a five-second number is closer to a guess than a measurement.
-          The long end of the curve, where speed is steady, is where this model is
-          actually good.
-        </p>
+        {hasMeter ? null : (
+          <p>
+            <span className="text-ink-secondary">
+              The curve starts at five minutes on purpose.
+            </span>{" "}
+            Shorter efforts are dominated by two things that are not effort: the
+            acceleration term, which is differentiated GPS speed, and fast descents
+            — with no cadence sensor there is no way to tell a sprint from
+            freewheeling, and drag at 60 km/h computes to around 850 W either way.
+            Those numbers would be fictional rather than merely uncertain, so they
+            are not shown. Ride with a power meter once and the full curve appears.
+          </p>
+        )}
       </div>
     </Shell>
   );
@@ -234,11 +263,17 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 /** Element-wise max across cached curves — never a re-scan of raw samples. */
-function envelope(curves: DatedCurve[]): PowerCurve | null {
+function envelope(curves: DatedCurve[], floorSeconds = 0): PowerCurve | null {
   if (curves.length === 0) return null;
   let watts = curves[0].watts;
   for (let i = 1; i < curves.length; i++) {
     watts = elementwiseMax(watts, curves[i].watts);
+  }
+  if (floorSeconds > 0) {
+    // Zero rather than truncate, so indices stay aligned with CURVE_DURATIONS.
+    watts = Float32Array.from(watts, (w, i) =>
+      CURVE_DURATIONS[i] < floorSeconds ? 0 : w,
+    );
   }
   return {
     durations: Int32Array.from(CURVE_DURATIONS),

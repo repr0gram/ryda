@@ -43,10 +43,15 @@ const MIN_GRADE_SPAN_M = 5;
 /** 108 km/h. Faster than this on a road bike is a position glitch. */
 const MAX_SPEED_MS = 30;
 /**
- * A standing-start sprint reaches roughly 3 m/s²; sustained values above this
- * are differentiation noise, not riding.
+ * Maximum believable acceleration on a bicycle, m/s².
+ *
+ * A trained rider sprinting from a standstill reaches roughly 2-3 m/s², and
+ * only for a second or two. Anything beyond that in a GPS trace is
+ * differentiation noise. The old value of 4 was generous enough to let noise
+ * through, and because the kinetic term is mass times acceleration times speed,
+ * a 105 kg system at 4 m/s² and 10 m/s "produces" 4.6 kW.
  */
-const MAX_ACCEL_MS2 = 4;
+const MAX_ACCEL_MS2 = 2.5;
 /**
  * Track sprinters peak near 2,500 W for a second or two. An *estimate* above
  * 2,000 W is an artefact, not an achievement — and this model has no business
