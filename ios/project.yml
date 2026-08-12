@@ -1,0 +1,78 @@
+name: Ryda
+
+# The Xcode project is generated, not committed. A .pbxproj is unreviewable in a
+# diff and merges badly; this file is the thing to read and change.
+#
+#   brew install xcodegen && cd ios && xcodegen generate
+
+options:
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # On from the first line rather than retrofitted. Adding concurrency
+    # annotations to a finished app is materially worse than writing them.
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Empty so Simulator builds need no signing at all. Set it for device builds:
+    #   xcodebuild ... DEVELOPMENT_TEAM=XXXXXXXXXX -allowProvisioningUpdates
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  RydaKit:
+    path: RydaKit
+
+targets:
+  Ryda:
+    type: application
+    platform: iOS
+    sources:
+      - path: Ryda
+    dependencies:
+      - package: RydaKit
+        product: RydaKit
+      - target: RydaWidgetExtension
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fadi.ryda
+        INFOPLIST_FILE: Ryda/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Ryda/Ryda.entitlements
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  RydaWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: RydaWidget
+    dependencies:
+      - package: RydaKit
+        product: RydaKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fadi.ryda.widget
+        INFOPLIST_FILE: RydaWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: RydaWidget/RydaWidget.entitlements
+        SKIP_INSTALL: YES
+
+schemes:
+  Ryda:
+    build:
+      targets:
+        Ryda: all
+        RydaWidgetExtension: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    archive:
+      config: Release

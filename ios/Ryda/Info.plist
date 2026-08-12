@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>$(DEVELOPMENT_LANGUAGE)</string>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleDisplayName</key><string>Ryda</string>
+  <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>UILaunchScreen</key><dict/>
+  <key>UISupportedInterfaceOrientations</key>
+  <array><string>UIInterfaceOrientationPortrait</string></array>
+
+  <!-- Where this build talks to. Overridden to localhost in a Debug scheme when
+       working against `next dev`. -->
+  <key>RydaBaseURL</key><string>https://ryda-nine.vercel.app</string>
+  <!-- Keychain access group, so the widget can read the token the app wrote.
+       Read from the plist rather than hardcoded: if App Groups turn out to be
+       unavailable on a given signing setup, the fallback is an edit here rather
+       than a code change. -->
+  <key>RydaKeychainGroup</key><string>$(AppIdentifierPrefix)com.fadi.ryda</string>
+  <key>RydaAppGroup</key><string>group.com.fadi.ryda</string>
+
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>com.fadi.ryda</string>
+      <key>CFBundleURLSchemes</key><array><string>ryda</string></array>
+    </dict>
+  </array>
+
+  <!-- Production is TLS 1.3 and needs no exception. This one covers a dev
+       server on the host machine only; NSAllowsArbitraryLoads is not used. -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
+</dict>
+</plist>
