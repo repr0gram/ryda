@@ -8,6 +8,20 @@
       "when": 1786396127000,
       "tag": "0000_strong_nextwave",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786556960533,
+      "tag": "0001_serious_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786557180185,
+      "tag": "0002_mysterious_purifiers",
+      "breakpoints": true
     }
   ]
 }

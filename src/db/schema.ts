@@ -5,7 +5,9 @@ import {
   index,
   integer,
   jsonb,
+  foreignKey,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -102,7 +104,15 @@ export const riderSettings = pgTable("rider_settings", {
 export const rides = pgTable(
   "rides",
   {
-    id: text("id").primaryKey(),
+    /**
+     * Derived from start minute and duration, so re-importing the same file is
+     * idempotent. NOT unique on its own: two friends riding together start
+     * within the same minute and finish the same route, so their ids collide.
+     * The primary key is (userId, id) for that reason — with `id` alone, the
+     * second upload silently reassigned the first rider's ride to the second
+     * account and the first lost it.
+     */
+    id: text("id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -117,6 +127,11 @@ export const rides = pgTable(
 
     sampleCount: integer("sample_count").notNull(),
     altitudeSource: text("altitude_source").notNull(),
+    /** True when speed was integrated from positions rather than measured.
+     *  The estimator smooths derived speed far harder, so losing this on a
+     *  round trip would quietly reintroduce a device-dependent bias in every
+     *  synced ride. */
+    speedIsDerived: boolean("speed_is_derived").notNull().default(false),
     hasMeasuredPower: boolean("has_measured_power").notNull().default(false),
     devices: jsonb("devices").$type<string[]>().notNull().default([]),
 
@@ -139,11 +154,10 @@ export const rides = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
+    primaryKey({ columns: [t.userId, t.id] }),
     // The library and trend both read a user's rides newest-first.
     index("rides_user_started_idx").on(t.userId, t.startedAt),
     index("rides_user_date_idx").on(t.userId, t.localDate),
-    // Ride ids are only unique within an account.
-    uniqueIndex("rides_user_id_idx").on(t.userId, t.id),
   ],
 );
 
@@ -155,10 +169,10 @@ export const rides = pgTable(
  * exhaust Neon's 0.5 GB free tier within a season and make every read a join
  * over millions of rows.
  */
-export const rideStreams = pgTable("ride_streams", {
-  rideId: text("ride_id")
-    .primaryKey()
-    .references(() => rides.id, { onDelete: "cascade" }),
+export const rideStreams = pgTable(
+  "ride_streams",
+  {
+  rideId: text("ride_id").notNull(),
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
@@ -174,7 +188,15 @@ export const rideStreams = pgTable("ride_streams", {
   power: bytea("power"),
   temperature: bytea("temperature"),
   paused: bytea("paused"),
-});
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.rideId] }),
+    foreignKey({
+      columns: [t.userId, t.rideId],
+      foreignColumns: [rides.userId, rides.id],
+    }).onDelete("cascade"),
+  ],
+);
 
 /**
  * Read-only share links.
@@ -186,9 +208,7 @@ export const shareLinks = pgTable(
   "share_links",
   {
     token: text("token").primaryKey(),
-    rideId: text("ride_id")
-      .notNull()
-      .references(() => rides.id, { onDelete: "cascade" }),
+    rideId: text("ride_id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -198,5 +218,11 @@ export const shareLinks = pgTable(
     expiresAt: timestamp("expires_at"),
     revokedAt: timestamp("revoked_at"),
   },
-  (t) => [index("share_links_ride_idx").on(t.rideId)],
+  (t) => [
+    index("share_links_ride_idx").on(t.rideId),
+    foreignKey({
+      columns: [t.userId, t.rideId],
+      foreignColumns: [rides.userId, rides.id],
+    }).onDelete("cascade"),
+  ],
 );

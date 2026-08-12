@@ -1,0 +1,1 @@
+ALTER TABLE "rides" ADD COLUMN "speed_is_derived" boolean DEFAULT false NOT NULL;

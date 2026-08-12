@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { bearer } from "better-auth/plugins";
 import { db, schema } from "@/db";
 
 /**
@@ -38,6 +39,26 @@ export const auth = betterAuth({
     // Accounts are invite-scale, so cookies can be strict.
     defaultCookieAttributes: { sameSite: "lax", secure: process.env.NODE_ENV === "production" },
   },
+  plugins: [
+    // A native app cannot hold a browser cookie jar, so the same session is
+    // also addressable as `Authorization: Bearer <token>`. Same sessions table,
+    // same expiry, same revocation — one auth system, two transports, rather
+    // than a second parallel scheme with its own bugs.
+    bearer(),
+  ],
 });
+
+/**
+ * Resolve the caller, from either transport.
+ *
+ * Every route that touches ride data starts here. Authorisation is checked in
+ * the handler next to the query rather than in middleware: middleware runs on a
+ * path pattern, and a path pattern is the wrong unit for "does this person own
+ * this ride".
+ */
+export async function requireUser(request: Request) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  return session?.user ?? null;
+}
 
 export type Session = typeof auth.$Infer.Session;

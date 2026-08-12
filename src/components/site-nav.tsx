@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/library", label: "Library" },
   { href: "/trend", label: "Trend" },
   { href: "/power", label: "Power" },
+  { href: "/account", label: "Account" },
 ] as const;
 
 export function SiteNav() {
