@@ -11,6 +11,8 @@ export function SyncPanel() {
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [result, setResult] = useState<SyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recomputing, setRecomputing] = useState(false);
+  const [recomputed, setRecomputed] = useState<number | null>(null);
 
   async function refresh() {
     try {
@@ -44,6 +46,21 @@ export function SyncPanel() {
     }
   }
 
+  async function recompute() {
+    setRecomputing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/rides/recompute", { method: "POST" });
+      if (!res.ok) throw new Error(`server said ${res.status}`);
+      const body = (await res.json()) as { recomputed: number };
+      setRecomputed(body.recomputed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "recompute failed");
+    } finally {
+      setRecomputing(false);
+    }
+  }
+
   return (
     <section className="mt-5 rounded-xl border border-hairline bg-surface-1 p-5">
       <h2 className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">Sync</h2>
@@ -64,13 +81,31 @@ export function SyncPanel() {
         weight and threshold, not trusted from the server.
       </p>
 
-      <button
-        onClick={run}
-        disabled={progress !== null}
-        className="mt-4 rounded-md bg-[var(--brand)] px-3 py-2 text-[13px] font-medium text-[var(--brand-contrast)] transition-opacity disabled:opacity-60"
-      >
-        {progress ? "Syncing…" : "Sync now"}
-      </button>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          onClick={run}
+          disabled={progress !== null}
+          className="rounded-md bg-[var(--brand)] px-3 py-2 text-[13px] font-medium text-[var(--brand-contrast)] transition-opacity disabled:opacity-60"
+        >
+          {progress ? "Syncing…" : "Sync now"}
+        </button>
+        <button
+          onClick={recompute}
+          disabled={recomputing}
+          className="rounded-md border border-hairline bg-surface-2 px-3 py-2 text-[13px] font-medium text-ink transition-colors hover:bg-surface-3 disabled:opacity-60"
+        >
+          {recomputing ? "Recomputing…" : "Recompute on the server"}
+        </button>
+      </div>
+
+      <p className="mt-2 max-w-prose text-[12px] leading-relaxed text-ink-muted">
+        Stored figures are an interpretation of the samples, so they go stale when
+        the model improves. Saving your rider settings already re-derives them;
+        this is the button for when nothing about you changed but the maths did.
+        {recomputed !== null ? (
+          <span className="text-ink-secondary"> Re-derived {recomputed} rides.</span>
+        ) : null}
+      </p>
 
       {progress ? (
         <p className="mt-3 text-[12px] text-ink-muted">

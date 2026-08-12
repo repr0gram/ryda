@@ -6,6 +6,7 @@ import {
   sanitise,
   type RiderSettings,
 } from "@/lib/rider-settings";
+import { recomputeRides } from "@/lib/analysis/recompute";
 
 /**
  * The rider's own numbers.
@@ -24,6 +25,8 @@ import {
 export interface RiderSettingsResponse {
   settings: RiderSettings;
   source: "saved" | "default";
+  /** How many stored rides were re-derived, when a PUT changed anything. */
+  recomputed?: number;
 }
 
 export async function GET(request: Request) {
@@ -76,7 +79,14 @@ export async function PUT(request: Request) {
     .values(values)
     .onConflictDoUpdate({ target: schema.riderSettings.userId, set: values });
 
-  const body: RiderSettingsResponse = { settings, source: "saved" };
+  // Mass and threshold are inputs to the physics, so changing them invalidates
+  // every number already stored for every ride. Re-deriving them here is what
+  // stops the ride list and the ride screen disagreeing: the list serves stored
+  // figures and the screen recomputes live, and without this they are answers
+  // from different days.
+  const { recomputed } = await recomputeRides(user.id, settings);
+
+  const body: RiderSettingsResponse = { settings, source: "saved", recomputed };
   return Response.json(body);
 }
 
