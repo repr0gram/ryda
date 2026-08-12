@@ -81,7 +81,7 @@ export function SyncPanel() {
 
       {result ? (
         <p className="mt-3 text-[12px] text-ink-secondary">
-          Uploaded {result.pushed}, downloaded {result.pulled}.
+          Uploaded {result.pushed}, updated {result.updated}, downloaded {result.pulled}.
           {result.failed.length > 0 ? (
             <span style={{ color: "var(--status-warning)" }}>
               {" "}

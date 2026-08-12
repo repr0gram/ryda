@@ -8,6 +8,7 @@ import {
   type RideSummary,
 } from "@/lib/store/rides";
 import { decodeStreams, encodeStreams, type WireRide, type WireStreams } from "./wire";
+import { differs } from "./diff";
 
 /**
  * Two-way sync between this browser and the account.
@@ -32,9 +33,12 @@ export interface SyncProgress {
 
 export interface SyncResult {
   pushed: number;
+  /** Rides already on the server whose numbers had changed here. */
+  updated: number;
   pulled: number;
   failed: { id: string; reason: string }[];
 }
+
 
 function toWireRide(summary: RideSummary): WireRide {
   return {
@@ -84,7 +88,8 @@ export async function sync(
   const localIds = new Set(local.map((r) => r.id));
   const remoteIds = new Set(remote.map((r) => r.id));
 
-  const result: SyncResult = { pushed: 0, pulled: 0, failed: [] };
+  const result: SyncResult = { pushed: 0, updated: 0, pulled: 0, failed: [] };
+  const byId = new Map(remote.map((r) => [r.id, r]));
 
   const toPush = local.filter((r) => !remoteIds.has(r.id));
   for (let i = 0; i < toPush.length; i++) {
@@ -103,6 +108,29 @@ export async function sync(
       });
       if (!res.ok) throw new Error(`server said ${res.status}`);
       result.pushed++;
+    } catch (e) {
+      result.failed.push({ id: summary.id, reason: reasonOf(e) });
+    }
+  }
+
+  // Rides the server already has, but whose analysis has moved on here. Sent
+  // without streams: the samples have not changed and re-uploading a megabyte
+  // per ride to correct six floats would make correcting anything unthinkable.
+  const toUpdate = local.filter((r) => {
+    const there = byId.get(r.id);
+    return there !== undefined && differs(r, there);
+  });
+  for (let i = 0; i < toUpdate.length; i++) {
+    const summary = toUpdate[i];
+    onProgress?.({ phase: "push", done: i + 1, total: toUpdate.length, name: summary.name });
+    try {
+      const res = await fetch("/api/rides", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ride: toWireRide(summary) }),
+      });
+      if (!res.ok) throw new Error(`server said ${res.status}`);
+      result.updated++;
     } catch (e) {
       result.failed.push({ id: summary.id, reason: reasonOf(e) });
     }

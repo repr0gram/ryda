@@ -26,7 +26,15 @@ export async function GET(request: Request) {
 
 interface PushBody {
   ride: WireRide;
-  streams: WireStreams;
+  /**
+   * Omit to update an existing ride's summary without re-sending its samples.
+   *
+   * Streams are immutable once recorded; the numbers derived from them are not.
+   * The model changes, the rider's mass changes, and a re-import picks up a
+   * field the parser did not used to read. Requiring the streams to correct any
+   * of that would mean pushing a megabyte per ride to change six floats.
+   */
+  streams?: WireStreams;
 }
 
 /**
@@ -49,8 +57,23 @@ export async function POST(request: Request) {
   }
 
   const { ride, streams } = body ?? {};
-  if (!ride?.id || !streams?.channels) {
-    return Response.json({ error: "expected { ride, streams }" }, { status: 400 });
+  if (!ride?.id) {
+    return Response.json({ error: "expected { ride }" }, { status: 400 });
+  }
+
+  // Summary-only update. Deliberately cannot create a ride: without streams
+  // there would be nothing to analyse, and a row that exists but has no samples
+  // is worse than no row.
+  if (!streams?.channels) {
+    const updated = await db
+      .update(schema.rides)
+      .set(summaryOnly(ride))
+      .where(and(eq(schema.rides.id, ride.id), eq(schema.rides.userId, user.id)))
+      .returning({ id: schema.rides.id });
+    if (updated.length === 0) {
+      return Response.json({ error: "not found — send streams to create it" }, { status: 404 });
+    }
+    return Response.json({ id: ride.id, updated: "summary" });
   }
 
   // Decode before writing, so a malformed payload fails here rather than
@@ -147,6 +170,33 @@ export async function DELETE(request: Request) {
   if (deleted.length === 0) return Response.json({ error: "not found" }, { status: 404 });
 
   return Response.json({ deleted: id });
+}
+
+/**
+ * The fields a re-analysis can legitimately change.
+ *
+ * Deliberately excludes sampleCount, altitudeSource and speedIsDerived: those
+ * describe the recording, not the interpretation, and are only knowable from
+ * the streams themselves. Letting a summary-only push rewrite them would let a
+ * client quietly claim a ride was recorded differently than it was.
+ */
+function summaryOnly(ride: WireRide) {
+  return {
+    name: ride.name,
+    localDate: ride.localDate,
+    durationSeconds: Math.round(ride.durationSeconds),
+    movingSeconds: Math.round(ride.movingSeconds),
+    distanceMeters: ride.distanceMeters,
+    elevationGainMeters: ride.elevationGainMeters,
+    meanPower: ride.meanPower,
+    weightedPower: ride.weightedPower,
+    load: ride.load,
+    meanHeartRate: ride.meanHeartRate,
+    reportedCalories: ride.reportedCalories ?? null,
+    decouplingPercent: ride.decouplingPercent,
+    confidence: ride.confidence,
+    updatedAt: new Date(),
+  };
 }
 
 function toBuffer(view: ArrayBufferView | undefined): Uint8Array | null {
