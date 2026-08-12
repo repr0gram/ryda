@@ -133,8 +133,14 @@ struct SignInScreen: View {
             // Worth naming rather than hiding: this is what an access wall looks
             // like, and it is not a credentials problem.
             return "The server answered \(status) with something that wasn't JSON."
+        case APIError.decoding(let summary):
+            return "The server's answer didn't match what this app expects — \(summary). The app is probably older than the API."
+        case KeychainError.status(let status):
+            // Signing in worked and then could not be remembered, which is a
+            // different problem from bad credentials and needs saying so.
+            return "Signed in, but the session couldn't be saved (keychain error \(status))."
         default:
-            return "That didn't work."
+            return "That didn't work: \(error)"
         }
     }
 }

@@ -10,6 +10,35 @@ public enum APIError: Error, Sendable, Equatable {
     case notJSON(status: Int, contentType: String?)
     case server(status: Int, message: String?)
     case transport(String)
+    /// The response was JSON but not the shape expected. Carries which field,
+    /// because `String(describing: DecodingError)` is a paragraph of nested
+    /// context that tells a rider nothing and tells a developer very little
+    /// faster than a one-line summary does.
+    case decoding(summary: String)
+}
+
+extension DecodingError {
+    /// One line naming the field and what was wrong with it.
+    var shortSummary: String {
+        func path(_ context: Context) -> String {
+            let keys = context.codingPath.map(\.stringValue).filter { !$0.isEmpty }
+            return keys.isEmpty ? "the response" : keys.joined(separator: ".")
+        }
+        switch self {
+        case .keyNotFound(let key, let context):
+            let parent = path(context)
+            return "missing field \"\(key.stringValue)\"" +
+                (parent == "the response" ? "" : " in \(parent)")
+        case .valueNotFound(let type, let context):
+            return "\(path(context)) was null, expected \(type)"
+        case .typeMismatch(let type, let context):
+            return "\(path(context)) was not \(type)"
+        case .dataCorrupted(let context):
+            return "\(path(context)): \(context.debugDescription)"
+        @unknown default:
+            return "could not read the response"
+        }
+    }
 }
 
 /// Everything the app and the widget know about talking to Ryda.
@@ -164,8 +193,10 @@ public actor RydaAPI {
         }
         do {
             return try decoder.decode(T.self, from: data)
+        } catch let error as DecodingError {
+            throw APIError.decoding(summary: error.shortSummary)
         } catch {
-            throw APIError.server(status: response.statusCode, message: String(describing: error))
+            throw APIError.decoding(summary: error.localizedDescription)
         }
     }
 
