@@ -2,7 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { estimatePower } from "@/lib/analysis/power";
-import { caloriesFrom, computeRideMetrics } from "@/lib/analysis/metrics";
+import {
+  caloriesFrom,
+  computeRideMetrics,
+  kilojoulesFrom,
+} from "@/lib/analysis/metrics";
 import {
   HEART_RATE_ZONES,
   POWER_ZONES,
@@ -170,9 +174,17 @@ export async function GET(request: Request, context: RouteContext<"/api/rides/[i
           // Calories ride with the metrics rather than being derived on the
           // client: it is a stated efficiency assumption, and two clients
           // assuming differently would disagree about the same ride.
+          //
+          // Derived the same way the ride list derives it, rather than from the
+          // exact stream sum available here. The two differ by about half a
+          // percent — a rounding artefact of the moving-time loop — which is far
+          // inside the power model's own error but is plainly visible as a
+          // different number on two screens showing the same ride.
           analysis: {
             ...analysis.metrics,
-            calories: caloriesFrom(analysis.metrics.kilojoules),
+            calories: caloriesFrom(
+              kilojoulesFrom(analysis.metrics.meanPower, analysis.metrics.movingSeconds),
+            ),
           },
           zones: analysis.zones,
           ride: ride ? summaryOf(ride) : null,

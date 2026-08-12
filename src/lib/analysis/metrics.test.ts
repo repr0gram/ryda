@@ -266,13 +266,17 @@ describe("energy from a stored summary", () => {
   });
 
   test("converts work to calories at a stated efficiency, not by coincidence", () => {
-    // 1 kJ of pedalling costs about 1.04 kcal, which is why cycling software has
-    // reported kilojoules as calories for decades. Pinned so the ratio stays
-    // deliberate rather than becoming `return kj`.
     expect(caloriesFrom(1000)).toBeCloseTo(1000 / GROSS_EFFICIENCY / 4.184, 6);
-    expect(caloriesFrom(1000) / 1000).toBeGreaterThan(1.0);
-    expect(caloriesFrom(1000) / 1000).toBeLessThan(1.1);
     expect(caloriesFrom(0)).toBe(0);
+
+    // Gross efficiency is physiologically bounded at roughly 18-23%, so the
+    // kcal-per-kJ ratio can only live between about 1.04 and 1.33. Anything
+    // outside that is an assumption no rider embodies — heart-rate-derived
+    // figures reaching 2.0 kcal/kJ imply 11.5% efficiency, which is the check
+    // this bound exists to encode.
+    const ratio = caloriesFrom(1000) / 1000;
+    expect(ratio).toBeGreaterThan(1 / 0.23 / 4.184);
+    expect(ratio).toBeLessThan(1 / 0.18 / 4.184);
   });
 
   test("a ride with no moving time has no energy", () => {

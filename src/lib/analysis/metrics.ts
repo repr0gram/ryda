@@ -326,16 +326,24 @@ export function kilojoulesFrom(meanPower: number, movingSeconds: number): number
 /**
  * Dietary calories burned, from mechanical work.
  *
- * A cyclist converts roughly 20-25% of metabolic energy into work at the
- * pedals, and there are 4.184 kJ in a kilocalorie. Those two nearly cancel —
- * 1 kJ of work costs about 1/0.23/4.184 ≈ 1.04 kcal — which is why cycling
- * software has quietly reported kilojoules as calories for decades. The ratio
- * is kept explicit rather than implied by a bare `return kj`.
+ * GROSS efficiency, which is total energy expenditure over work at the pedals —
+ * so the resting metabolism burned during the ride is already inside this
+ * number and must not be added again on top. Published gross efficiency runs
+ * 18-23%, lower at the modest power outputs most riding actually happens at,
+ * because a fixed resting cost is a larger share of a smaller total. 21% is a
+ * reasonable middle for a recreational rider; a trained one on a hard ride sits
+ * nearer 23%.
  *
- * Inherits every bit of the power estimate's error, and then some: gross
- * efficiency genuinely varies between riders.
+ * This is worth stating because a cycling calorie figure is only ever as good
+ * as two assumptions, and both are usually hidden. The other one is the power
+ * estimate itself, which here carries roughly ±30-40 W.
+ *
+ * Heart-rate-derived calories — what Strava reports for some files — routinely
+ * land at twice this. They are not reconcilable with the work done: 2,163 kJ
+ * at 4,491 kcal implies 11.5% gross efficiency, which no human has. When the
+ * two disagree, the one anchored to the drag equation is the one to trust.
  */
-export const GROSS_EFFICIENCY = 0.23;
+export const GROSS_EFFICIENCY = 0.21;
 const KJ_PER_KCAL = 4.184;
 
 export function caloriesFrom(kilojoules: number): number {

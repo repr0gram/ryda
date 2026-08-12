@@ -57,16 +57,29 @@ struct RootView: View {
 
 struct MainTabs: View {
     @Binding var deepLinkedRide: String?
+    // Same debug affordance as the token and ride hooks: simctl cannot tap, so
+    // reaching a tab for a screenshot needs a way in that is not a gesture.
+    @State private var selection = debugTab
+
+    private static var debugTab: Int {
+        #if DEBUG
+        // integer(forKey:) rather than object(forKey:) as? Int — a launch
+        // argument arrives as a string, and the cast silently yields nil.
+        return UserDefaults.standard.integer(forKey: "RydaDebugTab")
+        #else
+        return 0
+        #endif
+    }
 
     var body: some View {
-        TabView {
-            Tab("Rides", systemImage: "bicycle") {
+        TabView(selection: $selection) {
+            Tab("Rides", systemImage: "bicycle", value: 0) {
                 RideListScreen(deepLinkedRide: $deepLinkedRide)
             }
-            Tab("Trend", systemImage: "chart.xyaxis.line") {
+            Tab("Trend", systemImage: "chart.xyaxis.line", value: 1) {
                 TrendScreen()
             }
-            Tab("Account", systemImage: "person.crop.circle") {
+            Tab("Account", systemImage: "person.crop.circle", value: 2) {
                 AccountScreen()
             }
         }
