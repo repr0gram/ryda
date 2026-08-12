@@ -18,23 +18,26 @@ out to be non-negotiable — see [Why files, not the API](#why-files-not-the-api
 
 - Import `.fit`, `.gpx` and `.tcx`, gzipped or not, straight from a Strava bulk export
 - Ride screen — route map coloured by any channel, synchronised charts, scrub, drag-select a range and every statistic recomputes for it
+- Time in power and heart-rate zones, and a W′ balance trace
 - Library — bulk import, deduplication, delete, recompute
 - Trend — fitness / fatigue / form, ramp rate, consistency
 - Power — mean-maximal curve, best efforts, FTP estimate, critical power and W′
+- Accounts, and two-way sync between the browser and Postgres
+- A JSON API with bearer-token auth, including a single-request summary endpoint for a native widget
 - Light and dark themes
 
 **Built but not wired up**
 
-- Postgres schema, authentication and a private blob store are provisioned; nothing reads or writes them yet. Rides live only in the browser.
 - Share links exist in the schema, not in the app.
-- `timeInZones` and `wPrimeBalance` are implemented and tested but have no UI.
+- The private blob store is provisioned but no original files are kept in it — only the parsed streams are stored.
+- Wind correction is implemented and tested but has no data source in the app; only `scripts/audit-power.ts` feeds it, from a Strava export's weather columns.
 
 **Known to be wrong**
 
-- The power model is uncalibrated. On one real library it estimates a threshold
-  around 203 W while cross-checking training load against Strava's Relative
-  Effort implies around 158 W. Both cannot be right. See
-  [Calibration](#calibration-the-open-problem).
+- The power model has no absolute calibration and cannot get one without a
+  meter. It is now internally consistent — the same rider on the same roads
+  scores the same regardless of which device recorded the ride — but the whole
+  scale could still be off. See [Calibration](#calibration-the-open-problem).
 
 ---
 
@@ -57,7 +60,9 @@ wired up.
 | script | |
 |---|---|
 | `npm run dev` | dev server |
-| `npm test` | unit tests (72) |
+| `npm test` | unit tests (78) |
+| `npm run audit:power -- <strava-export-dir>` | cross-check the estimator against Strava's own |
+| `npm run db:migrate` | apply migrations (reads `.env.local`) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run build` | production build |
 | `npm run shoot -- /power` | screenshot a route in both themes |
@@ -110,12 +115,25 @@ you stop).
 
 Things this does that a naive estimator does not:
 
-- **Cadence gates coasting.** `cadence == 0` means the legs are not driving the
-  bike, so power is zero. Strava's estimator has no cadence channel.
-- **Paused samples are excluded from every average.** Normalising to a uniform
-  1 Hz grid means inventing samples for time the device was stopped. One real
-  ride had 80 minutes of stops in a 5h47 window; including those zeros reported
-  61 W where the physics says ~89 W.
+- **Coasting is detected from force balance.** A bike is freewheeling when the
+  resistive forces alone account for its motion. Reading it off the cadence
+  channel instead is worse than it sounds: checked against physics, a real head
+  unit's cadence zeros matched freewheeling exactly on descents (measured
+  −0.034 vs predicted −0.023 m/s²) and not at all on the flat (−0.056 measured
+  where a freewheeling bike must lose 0.197). The sensor was dropping out while
+  the rider pedalled on, and believing it deleted 19% of that ride's mean power
+  — on the two rides out of thirteen that had a sensor paired at all.
+- **Stopped time is excluded from every average.** A head unit with auto-pause
+  stops writing records; a phone records straight through the red light. Both
+  riders are sitting still. Deciding from the pause flag alone made average
+  power 8–13% lower on the phone files, so the distance channel decides instead.
+- **Wind is corrected for, when there is a source for it.** Drag is quadratic,
+  so an out-and-back in wind costs strictly more than still air — at 8 m/s into
+  a 3 m/s headwind drag is 1.9×, with it behind you 0.4×, and the mean of those
+  is 1.15, not 1. Ignoring wind is not noise that cancels; it is a systematic
+  under-estimate on windy days that reads as a bad day rather than a windy one.
+  Headwind is resolved per sample from GPS heading, with the reported speed
+  scaled from the 10 m anemometer down to rider height by the log wind profile.
 - **Acceleration is differentiated over seven seconds, not one.** Over a ride
   starting and ending at rest, net kinetic work is zero — but negative power is
   clamped away, so symmetric noise in acceleration is a one-way ratchet that
@@ -141,10 +159,28 @@ Expect roughly ±30–40 W even in good conditions.
 ### Calibration, the open problem
 
 The model is anchored on rider mass, drag area and rolling resistance, and only
-mass is known with confidence. Two independent checks currently disagree by
-about 45 W on threshold. The cleanest resolution is one ride with a borrowed
-power meter, which would let the model fit CdA and Crr by least squares against
-measured watts.
+mass is known with confidence. Without a meter there is no ground truth to fit
+against, so the goal is not an absolutely correct number — it is a number that
+means the same thing every ride, because a fitness curve is nothing but a
+comparison between rides.
+
+That is what `scripts/audit-power.ts` is for. It runs the estimator over a
+Strava bulk export and puts the result beside Strava's own estimate, which is
+derived from the same files by different code:
+
+```bash
+npm run audit:power -- ~/Downloads/export_XXXXXXX
+```
+
+The column that matters is **efficiency factor** — weighted power over average
+heart rate. Heart rate does not care which device wrote the file, so for one
+rider over a few weeks EF should be nearly flat, and whatever spread it shows is
+the estimator's own inconsistency. Grouping that spread by how the file recorded
+speed says whether the fault is in the rider's legs or in this code. On one real
+library that gap was 16% between head-unit and phone recordings; it is 5% now.
+
+The absolute scale is still open, and a single ride with a borrowed power meter
+would close it by fitting CdA and Crr by least squares against measured watts.
 
 ---
 
@@ -172,11 +208,28 @@ browser ──▶ parse (FIT / GPX / TCX)  ──▶ normalise to 1 Hz  ──�
                                           IndexedDB ◀── metrics + mean-max curve
 ```
 
-**Everything runs on the device.** A ride file records where you live and when
-you are away from home, so local-by-default is the correct posture — and it means
-multi-ride analysis works with no backend, no account and no cost. The schema in
-`src/db/schema.ts` mirrors the local store exactly, so adding sync later is a
-transport change rather than a rewrite.
+**Analysis runs on the device.** A ride file records where you live and when you
+are away from home, so local-by-default is the correct posture — and it means
+multi-ride analysis works with no backend, no account and no cost. An account is
+additive: it keeps a copy on the server so a cleared browser does not lose a
+season, and it is what a native app reads.
+
+```
+browser  ──push summary + streams──▶  Postgres  ──▶  GET /api/summary  ──▶  iOS widget
+   ▲                                     │
+   └──────────pull, then re-analyse──────┘
+```
+
+Rides pulled down are re-analysed locally rather than trusted from the wire: the
+rider's mass and threshold live on the device, and the model itself changes.
+Streams travel as base64 of their raw buffers, because 20,000 samples as JSON
+text is roughly six times the bytes and parses one token at a time.
+
+**Ride ids are only unique within an account.** An id is derived from start
+minute and duration so that re-importing the same file is idempotent — which
+means two friends who ride together collide. The primary key is `(userId, id)`
+throughout; with `id` alone the second rider's upload silently reassigned the
+first rider's ride to the second account.
 
 Notable decisions:
 
@@ -227,20 +280,58 @@ gitignored, since a GPS trace is a home address.
 
 ---
 
+## The API
+
+Every route takes either a session cookie or `Authorization: Bearer <token>`.
+Both resolve to the same session row, so revoking a session logs out the browser
+and the phone together. Sign-in returns the bearer token.
+
+| route | |
+|---|---|
+| `POST /api/auth/sign-in/email` | returns `{ token, user }` |
+| `GET /api/rides` | summaries, newest first |
+| `POST /api/rides` | store one ride; idempotent on its id |
+| `DELETE /api/rides?id=` | 404s if it isn't yours |
+| `GET /api/rides/:id/streams` | base64 sample channels |
+| `GET /api/summary` | fitness, fatigue, form, ramp rate, last ride |
+
+`/api/summary` exists because a widget is woken by the OS on a budget, cannot
+page through endpoints, and has no room for a spinner. It is also why the
+analysis belongs on the server as well as the client: a native app
+re-implementing the power model in Swift would be a second implementation to
+keep in step, and the two would disagree within a month.
+
+Ownership is checked in each handler next to the query, never in middleware —
+middleware matches a path pattern, and a path pattern is the wrong unit for
+"does this person own this ride".
+
 ## Deployment
 
-Deployed on Vercel. `BETTER_AUTH_SECRET` must be set in the Vercel environment
-before authentication will work; `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are
-injected by the Neon and Blob integrations.
+Deployed on Vercel. `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` come from the
+Neon and Blob integrations. Authentication additionally needs:
 
-Deployment protection is on, which is currently the app's only access control —
-it should stay on until authentication is actually wired up.
+```bash
+vercel env add BETTER_AUTH_SECRET production   # openssl rand -base64 32
+vercel env add BETTER_AUTH_URL production      # https://<your-domain>
+npm run db:migrate
+```
+
+Deployment protection is on. It can come off once accounts are in use, but until
+then it is the only thing standing in front of the database.
 
 ---
 
 ## Licence
 
-Not yet chosen. Note that if this is ever released under AGPL, `@garmin/fitsdk`
-cannot be used as a FIT parser; its licence forbids redistribution under any
-licence requiring source disclosure. This project uses the MIT-licensed
-`fit-file-parser` instead, partly for that reason.
+[AGPL-3.0](LICENSE).
+
+This is a network service, and AGPL is the only common licence whose
+share-alike survives someone running a modified copy as a website without ever
+distributing a binary. The dependency choice was already made with this in mind:
+`@garmin/fitsdk` is the reference FIT implementation but its licence forbids
+redistribution under any licence requiring source disclosure, so this uses the
+MIT-licensed `fit-file-parser` instead. GoldenCheetah, the closest thing to a
+peer, is GPL.
+
+Copyright stays with the author, so relicensing later remains possible — that
+option only closes once outside contributions are accepted under AGPL.
