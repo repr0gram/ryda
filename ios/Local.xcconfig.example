@@ -1,0 +1,10 @@
+// Signing, kept out of the committed project.
+//
+//   cp Local.xcconfig.example Local.xcconfig
+//
+// Find your team id with:
+//   security find-certificate -c "Apple Development" -p \
+//     | openssl x509 -noout -subject | tr ',' '\n' | grep OU=
+//
+// Leave it empty to build for the Simulator, which needs no signing at all.
+DEVELOPMENT_TEAM =

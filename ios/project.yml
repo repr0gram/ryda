@@ -11,6 +11,12 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# Signing lives in a gitignored Local.xcconfig so it survives `xcodegen
+# generate`, which overwrites anything set through Xcode's UI.
+configFiles:
+  Debug: Local.xcconfig
+  Release: Local.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -19,9 +25,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
-    # Empty so Simulator builds need no signing at all. Set it for device builds:
-    #   xcodebuild ... DEVELOPMENT_TEAM=XXXXXXXXXX -allowProvisioningUpdates
-    DEVELOPMENT_TEAM: ""
+    # DEVELOPMENT_TEAM comes from Local.xcconfig; empty is fine for Simulator.
     CODE_SIGN_STYLE: Automatic
 
 packages:
