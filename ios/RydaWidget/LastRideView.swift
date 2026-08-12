@@ -17,6 +17,9 @@ struct LastRideView: View {
         case .signedOut:
             message("Sign in to Ryda", "Tap to open the app.")
                 .widgetURL(URL(string: "ryda://signin"))
+        case .unreachable(let status):
+            message("Can't reach your session", "Keychain error \(status).")
+                .widgetURL(URL(string: "ryda://signin"))
         }
     }
 

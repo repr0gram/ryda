@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 import RydaKit
 
 /// Who is signed in, and the one API instance everything else borrows.
@@ -64,18 +65,38 @@ final class SessionStore {
         let user = try await api.signIn(email: email, password: password)
         await loadSettings()
         state = .signedIn(email: user.email)
+        await refreshWidgets()
     }
 
     func signUp(email: String, password: String, name: String) async throws {
         let user = try await api.signUp(email: email, password: password, name: name)
         await loadSettings()
         state = .signedIn(email: user.email)
+        await refreshWidgets()
     }
 
     func signOut() async {
         await api.signOut()
         settings = nil
         state = .signedOut
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Push fresh data to the widget and ask it to redraw.
+    ///
+    /// Without this the widget only learns about a sign-in when its own
+    /// timeline policy next fires — and a signed-out widget is deliberately
+    /// lazy about that, so it would sit on "Sign in to Ryda" for hours after
+    /// the rider had already signed in. Nothing about the widget's own code is
+    /// wrong; it simply was never told.
+    ///
+    /// Warming the cache first means the widget's next draw has real numbers
+    /// even before its own network call lands.
+    func refreshWidgets() async {
+        if case .populated(let summary) = try? await api.summary(today: Format.localToday()) {
+            SummaryCache.save(summary)
+        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func loadSettings() async {

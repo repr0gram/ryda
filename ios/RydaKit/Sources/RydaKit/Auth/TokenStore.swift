@@ -13,6 +13,20 @@ public protocol TokenStore: Sendable {
     func clear() throws
 }
 
+/// Why there is no usable token.
+///
+/// "Absent" and "unreadable" look identical from the outside and mean opposite
+/// things: the first is a rider who has not signed in, the second is a widget
+/// that cannot reach the keychain the app wrote to — an entitlement problem no
+/// amount of signing in will fix. Collapsing them into one state is how that
+/// second case hides for a week behind a "Sign in" prompt that is already
+/// satisfied.
+public enum TokenStatus: Sendable, Equatable {
+    case present
+    case absent
+    case unreadable(OSStatus)
+}
+
 public struct KeychainTokenStore: TokenStore {
     private let service: String
     private let account = "session"

@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 public enum APIError: Error, Sendable, Equatable {
     case unauthorized
@@ -94,7 +95,18 @@ public actor RydaAPI {
     }
 
     public func hasToken() -> Bool {
-        ((try? tokens.read()) ?? nil) != nil
+        tokenStatus() == .present
+    }
+
+    /// Distinguishes "not signed in" from "cannot read the keychain at all".
+    public func tokenStatus() -> TokenStatus {
+        do {
+            return try tokens.read() == nil ? .absent : .present
+        } catch KeychainError.status(let status) {
+            return .unreadable(status)
+        } catch {
+            return .unreadable(errSecInternalError)
+        }
     }
 
     // MARK: Data

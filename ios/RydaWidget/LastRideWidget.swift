@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import RydaKit
+import Security
 
 @main
 struct RydaWidgetBundle: WidgetBundle {
@@ -29,6 +30,9 @@ struct LastRideEntry: TimelineEntry, Sendable {
         case ride(Summary.LatestRide, daysSince: Int, form: Double)
         case noRides
         case signedOut
+        /// The keychain refused the read — an entitlement problem, not a
+        /// sign-in problem, and signing in again will not touch it.
+        case unreachable(OSStatus)
         /// Last known good data, when the network failed this time round.
         case stale(Summary.LatestRide, daysSince: Int, asOf: Date)
     }
@@ -80,6 +84,7 @@ struct LastRideProvider: TimelineProvider {
             let next: Date
             switch entry.state {
             case .signedOut: next = .now.addingTimeInterval(4 * 3600)
+            case .unreachable: next = .now.addingTimeInterval(4 * 3600)
             case .noRides: next = .now.addingTimeInterval(6 * 3600)
             case .stale: next = .now.addingTimeInterval(15 * 60)
             case .ride: next = .now.addingTimeInterval(45 * 60)
@@ -93,8 +98,17 @@ struct LastRideProvider: TimelineProvider {
     /// streams in here would get it killed.
     private func fetch() async -> LastRideEntry {
         let api = RydaEnvironment.api()
-        guard await api.hasToken() else {
+        switch await api.tokenStatus() {
+        case .present:
+            break
+        case .absent:
             return LastRideEntry(date: .now, state: .signedOut)
+        case .unreadable(let status):
+            // Distinct from signed-out on purpose. This is the failure mode
+            // where the widget cannot see the keychain group the app writes to,
+            // and reporting it as "sign in" would send the rider round a loop
+            // they can never complete.
+            return LastRideEntry(date: .now, state: .unreachable(status))
         }
         do {
             let response = try await api.summary(today: Format.localToday())
