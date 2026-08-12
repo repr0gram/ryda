@@ -308,6 +308,41 @@ function averageFinitePositive(values: ArrayLike<number>): number | null {
 }
 
 /**
+ * Mechanical work from a stored ride summary, in kilojoules.
+ *
+ * `computeRideMetrics` gets this by summing the power stream, which needs the
+ * samples. The same number falls out of two figures already denormalised onto
+ * every ride row: resting samples are zero watts and are excluded from the
+ * mean, so mean power over moving time is the same integral.
+ *
+ * That equivalence is what lets a ride list show energy without decoding a
+ * season of streams, and it works for rides stored before this existed.
+ */
+export function kilojoulesFrom(meanPower: number, movingSeconds: number): number {
+  if (!(meanPower > 0) || !(movingSeconds > 0)) return 0;
+  return (meanPower * movingSeconds) / 1000;
+}
+
+/**
+ * Dietary calories burned, from mechanical work.
+ *
+ * A cyclist converts roughly 20-25% of metabolic energy into work at the
+ * pedals, and there are 4.184 kJ in a kilocalorie. Those two nearly cancel —
+ * 1 kJ of work costs about 1/0.23/4.184 ≈ 1.04 kcal — which is why cycling
+ * software has quietly reported kilojoules as calories for decades. The ratio
+ * is kept explicit rather than implied by a bare `return kj`.
+ *
+ * Inherits every bit of the power estimate's error, and then some: gross
+ * efficiency genuinely varies between riders.
+ */
+export const GROSS_EFFICIENCY = 0.23;
+const KJ_PER_KCAL = 4.184;
+
+export function caloriesFrom(kilojoules: number): number {
+  return (kilojoules / GROSS_EFFICIENCY) / KJ_PER_KCAL;
+}
+
+/**
  * Half-window for altitude smoothing before summing ascent, in samples (1 Hz),
  * so the full window is 61 seconds.
  *

@@ -119,14 +119,29 @@ private struct StatGrid: View {
 
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 1), count: 3) }
 
+    /// Average speed over moving time, not elapsed — a coffee stop is not
+    /// slow riding, and every other figure here already excludes stopped time.
+    private var averageSpeedKmh: Double {
+        metrics.movingSeconds > 0
+            ? (metrics.distanceMeters / metrics.movingSeconds) * 3.6
+            : 0
+    }
+
     var body: some View {
+        // Three rows of three, grouped by what each row answers: how far and how
+        // long, how hard, and what it cost.
         LazyVGrid(columns: columns, spacing: 1) {
             tile("Distance", Format.distance(metrics.distanceMeters), "km")
             tile("Moving", Format.duration(Int(metrics.movingSeconds)), "")
             tile("Climbing", Format.whole(metrics.elevationGainMeters), "m")
+
             tile("Weighted", Format.whole(metrics.weightedPower), "W")
             tile("Intensity", String(format: "%.2f", metrics.intensity), "")
             tile("Load", Format.whole(metrics.load), "")
+
+            tile("Energy", metrics.calories.map { Format.calories($0) } ?? "—", "kcal")
+            tile("Heart rate", metrics.meanHeartRate.map { Format.whole($0) } ?? "—", "bpm")
+            tile("Speed", String(format: "%.1f", averageSpeedKmh), "km/h")
         }
         .background(Palette.hairline)
         .clipShape(.rect(cornerRadius: 14))

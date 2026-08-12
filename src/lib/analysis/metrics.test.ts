@@ -1,6 +1,15 @@
 import { describe, expect, test } from "vitest";
 import { buildPowerCurve, estimateFtp, fitCriticalPower, powerAt } from "./curve";
-import { decoupling, load, timeInZones, weightedPower } from "./metrics";
+import {
+  GROSS_EFFICIENCY,
+  caloriesFrom,
+  computeRideMetrics,
+  decoupling,
+  kilojoulesFrom,
+  load,
+  timeInZones,
+  weightedPower,
+} from "./metrics";
 import {
   computeTrainingLoad,
   consistency,
@@ -227,5 +236,47 @@ describe("training load", () => {
     const series = computeTrainingLoad(entries);
     expect(rampRate(series)).toBeGreaterThan(0);
     expect(consistency(series, 28)).toBeCloseTo(0.5, 1);
+  });
+});
+
+describe("energy from a stored summary", () => {
+  test("matches the sum over the power stream", () => {
+    // The list endpoint cannot decode streams for every ride, so it derives
+    // work from mean power and moving time instead. That shortcut is only valid
+    // because resting samples are zero watts AND are excluded from the mean —
+    // if either ever stops being true this test is what catches it.
+    const n = 600;
+    const watts = new Float32Array(n);
+    const time = new Float64Array(n);
+    const distance = new Float64Array(n);
+    const altitude = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      time[i] = i;
+      // Stopped at a light for the middle two minutes: no distance, no watts.
+      const moving = i < 200 || i >= 320;
+      distance[i] = i === 0 ? 0 : distance[i - 1] + (moving ? 8 : 0);
+      watts[i] = moving ? 150 + (i % 40) : 0;
+    }
+
+    const metrics = computeRideMetrics({ watts, time, distance, altitude, ftp: 250 });
+    const derived = kilojoulesFrom(metrics.meanPower, metrics.movingSeconds);
+
+    // Within a sample's worth of work — the moving-time loop starts at i = 1.
+    expect(Math.abs(derived - metrics.kilojoules)).toBeLessThan(0.2);
+  });
+
+  test("converts work to calories at a stated efficiency, not by coincidence", () => {
+    // 1 kJ of pedalling costs about 1.04 kcal, which is why cycling software has
+    // reported kilojoules as calories for decades. Pinned so the ratio stays
+    // deliberate rather than becoming `return kj`.
+    expect(caloriesFrom(1000)).toBeCloseTo(1000 / GROSS_EFFICIENCY / 4.184, 6);
+    expect(caloriesFrom(1000) / 1000).toBeGreaterThan(1.0);
+    expect(caloriesFrom(1000) / 1000).toBeLessThan(1.1);
+    expect(caloriesFrom(0)).toBe(0);
+  });
+
+  test("a ride with no moving time has no energy", () => {
+    expect(kilojoulesFrom(200, 0)).toBe(0);
+    expect(kilojoulesFrom(0, 3600)).toBe(0);
   });
 });

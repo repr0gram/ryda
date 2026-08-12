@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { estimatePower } from "@/lib/analysis/power";
-import { computeRideMetrics } from "@/lib/analysis/metrics";
+import { caloriesFrom, computeRideMetrics } from "@/lib/analysis/metrics";
 import {
   HEART_RATE_ZONES,
   POWER_ZONES,
@@ -167,7 +167,13 @@ export async function GET(request: Request, context: RouteContext<"/api/rides/[i
             settingsSource: analysis.settingsSource,
             confidence: analysis.confidence,
           },
-          analysis: analysis.metrics,
+          // Calories ride with the metrics rather than being derived on the
+          // client: it is a stated efficiency assumption, and two clients
+          // assuming differently would disagree about the same ride.
+          analysis: {
+            ...analysis.metrics,
+            calories: caloriesFrom(analysis.metrics.kilojoules),
+          },
           zones: analysis.zones,
           ride: ride ? summaryOf(ride) : null,
         }

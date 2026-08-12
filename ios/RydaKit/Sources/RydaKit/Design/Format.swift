@@ -24,6 +24,14 @@ public enum Format {
         String(format: "%.1f", metres / 1000)
     }
 
+    /// Calories, thousands-separated. Four digits of kcal read badly without it.
+    public static func calories(_ value: Double) -> String {
+        let n = Int(value.rounded())
+        return n >= 1000
+            ? "\(n / 1000),\(String(format: "%03d", n % 1000))"
+            : String(n)
+    }
+
     public static func whole(_ value: Double) -> String {
         String(Int(value.rounded()))
     }

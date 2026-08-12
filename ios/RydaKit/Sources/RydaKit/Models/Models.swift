@@ -27,6 +27,11 @@ public struct RideSummary: Codable, Sendable, Identifiable, Hashable {
     public let confidence: String
     public let sampleCount: Int
     public let altitudeSource: String
+    /// Mechanical work and the dietary calories it cost. Derived server-side
+    /// from mean power and moving time, so they exist for rides stored before
+    /// the fields did — hence optional.
+    public let kilojoules: Double?
+    public let calories: Double?
 }
 
 public struct RideListResponse: Codable, Sendable {
@@ -88,6 +93,9 @@ public struct RideMetrics: Codable, Sendable {
     public let load: Double
     public let variability: Double
     public let kilojoules: Double
+    /// Computed server-side from `kilojoules` and a stated gross efficiency,
+    /// so every client agrees about the same ride.
+    public let calories: Double?
     public let meanHeartRate: Double?
     public let efficiency: Double?
 }
@@ -175,6 +183,7 @@ public struct Summary: Codable, Sendable {
         public let elevationGainMeters: Int
         public let weightedPower: Int
         public let load: Double
+        public let calories: Double?
 
         /// Spelled out because the synthesised memberwise initialiser is
         /// internal, and the widget builds sample entries from another module.
@@ -186,7 +195,8 @@ public struct Summary: Codable, Sendable {
             movingSeconds: Int,
             elevationGainMeters: Int,
             weightedPower: Int,
-            load: Double
+            load: Double,
+            calories: Double? = nil
         ) {
             self.id = id
             self.name = name
@@ -196,6 +206,7 @@ public struct Summary: Codable, Sendable {
             self.elevationGainMeters = elevationGainMeters
             self.weightedPower = weightedPower
             self.load = load
+            self.calories = calories
         }
     }
 }

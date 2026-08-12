@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { decodeStreams, type WireRide, type WireStreams } from "@/lib/sync/wire";
+import { caloriesFrom, kilojoulesFrom } from "@/lib/analysis/metrics";
 
 /**
  * A rider's rides.
@@ -173,6 +174,9 @@ export function toWire(row: typeof schema.rides.$inferSelect): WireRide {
     confidence: row.confidence,
     sampleCount: row.sampleCount,
     altitudeSource: row.altitudeSource,
+    // Derived rather than stored, so it works for rides that predate it.
+    kilojoules: kilojoulesFrom(row.meanPower, row.movingSeconds),
+    calories: caloriesFrom(kilojoulesFrom(row.meanPower, row.movingSeconds)),
   };
 }
 

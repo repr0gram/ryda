@@ -58,6 +58,10 @@ export interface WireRide {
   confidence: string;
   sampleCount: number;
   altitudeSource: string;
+  /** Mechanical work, derived from mean power and moving time. */
+  kilojoules?: number;
+  /** Dietary calories, from that work and a gross-efficiency assumption. */
+  calories?: number;
 }
 
 function toBase64(view: ArrayBufferView): string {

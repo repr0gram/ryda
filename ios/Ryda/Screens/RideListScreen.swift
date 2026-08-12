@@ -70,11 +70,14 @@ private struct RideRow: View {
                     .font(.caption)
                     .foregroundStyle(Palette.inkMuted)
             }
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 metric(Format.distance(ride.distanceMeters), "km")
                 metric(Format.duration(ride.movingSeconds), "")
                 metric(Format.whole(ride.elevationGainMeters), "m")
                 metric(Format.whole(ride.weightedPower), "W")
+                if let calories = ride.calories {
+                    metric(Format.calories(calories), "kcal")
+                }
                 metric(Format.whole(ride.load), "load")
             }
         }
