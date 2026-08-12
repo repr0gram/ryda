@@ -6,6 +6,7 @@ Local.xcconfig
 
 # Build output
 build/
+build-device/
 DerivedData/
 .build/
 .swiftpm/
