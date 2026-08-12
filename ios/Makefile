@@ -1,7 +1,7 @@
 DEVICE ?= Ryda Test
 BUNDLE  = com.fadi.ryda
 
-.PHONY: help bootstrap generate test build run device shot clean
+.PHONY: help bootstrap generate test build run device devices shot clean
 
 help:
 	@echo "make bootstrap   install xcodegen + the iOS simulator runtime"
@@ -10,6 +10,7 @@ help:
 	@echo "make build       build for the simulator"
 	@echo "make run         build, install and launch on the simulator"
 	@echo "make device      build and install on a connected iPhone"
+	@echo "make devices     list devices this Mac can see"
 	@echo "make shot        screenshot the booted simulator"
 	@echo ""
 	@echo "DEVICE=\"iPhone 17\" make run   to target a different simulator"
@@ -37,13 +38,33 @@ run: build
 	xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/Ryda.app
 	xcrun simctl launch booted $(BUNDLE)
 
-# Needs the iPhone plugged in and trusted. Xcode registers the device with your
-# team the first time, which is why this cannot be done ahead of the cable.
+# Builds for the phone that is actually connected, not "Any iOS Device".
+#
+# That distinction matters more than it looks: Apple issues a provisioning
+# profile against registered devices, and a generic destination never tells
+# Xcode which device to register — so it fails with "your team has no devices"
+# however many phones are plugged in.
+# Matched by shape rather than column, because the name column contains spaces
+# ("Fadi's iPhone") and the state column varies — a phone with Developer Mode
+# off reads "connected (no DDI)" rather than "available".
+DEVICE_ID = $(shell xcrun devicectl list devices 2>/dev/null | \
+  grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1)
+
 device: generate
+	@test -n "$(DEVICE_ID)" || { \
+	  echo "No device found. Connect your iPhone, unlock it, and make sure"; \
+	  echo "Developer Mode is on: Settings > Privacy & Security > Developer Mode."; \
+	  exit 1; }
+	@echo "building for device $(DEVICE_ID)"
 	xcodebuild -project Ryda.xcodeproj -scheme Ryda \
-	  -destination 'generic/platform=iOS' \
+	  -destination 'platform=iOS,id=$(DEVICE_ID)' \
 	  -derivedDataPath build-device \
 	  -allowProvisioningUpdates build
+
+# What the phone looks like from here — the first thing to check when a device
+# build fails for a reason that is not the code.
+devices:
+	@xcrun devicectl list devices 2>/dev/null || echo "no devices"
 
 shot:
 	xcrun simctl io booted screenshot shot.png && echo "wrote ios/shot.png"

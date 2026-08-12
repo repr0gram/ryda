@@ -43,12 +43,22 @@ Signing lives in `Local.xcconfig`, which is gitignored so it survives
    ```
    Note that the id in the certificate's *name* is your user id, not the team —
    the team is the `OU`.
-3. **Plug the phone in and unlock it.** Provisioning cannot be prepared ahead of
+3. **Enable Developer Mode on the phone** — Settings → Privacy & Security →
+   Developer Mode → on, then let it restart. The entry only appears after the
+   phone has been connected to Xcode once. Until this is on, the device shows as
+   `connected (no DDI)` in `make devices` and no build can reach it.
+4. **Plug the phone in and unlock it.** Provisioning cannot be prepared ahead of
    the cable: Apple issues a profile against registered devices, so with none
-   registered the build fails with *"Your team has no devices"*.
-4. `make device`, or just hit Run in Xcode with the phone selected.
-5. On the phone, **Settings → General → VPN & Device Management** → trust the
+   registered the build fails with *"Your team has no devices"*. Note that this
+   is also what you get when the phone is connected but the build targets
+   `generic/platform=iOS` — a generic destination never tells Xcode which device
+   to register, which is why `make device` targets the connected one by id.
+5. `make device`, or hit Run in Xcode with the phone selected.
+6. On the phone, **Settings → General → VPN & Device Management** → trust the
    developer certificate. The app will refuse to launch until you do.
+
+`make devices` shows what this Mac can see, and is the first thing to check when
+a device build fails for a reason that is not the code.
 
 ### What to expect on a free Apple ID
 
