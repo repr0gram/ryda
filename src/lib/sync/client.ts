@@ -204,3 +204,24 @@ export async function sync(
 function reasonOf(e: unknown): string {
   return e instanceof Error ? e.message : "unknown error";
 }
+
+/**
+ * Push whatever this browser knows that the account does not, quietly.
+ *
+ * Called after an import so a ride reaches the phone without anyone having to
+ * remember a second step. Importing and syncing being separate actions is how a
+ * re-import that picked up a device's calorie figure sat in one browser while
+ * every other device kept showing the derived one.
+ *
+ * Silent by design: it must never interrupt an import, and it does nothing at
+ * all when signed out, which is a supported way to use this app rather than an
+ * error.
+ */
+export async function pushQuietly(settings: RiderSettings): Promise<void> {
+  try {
+    await sync(settings);
+  } catch {
+    // Signed out, or offline. The Sync button on the account page remains the
+    // deliberate path; this is only ever an accelerator.
+  }
+}

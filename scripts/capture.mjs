@@ -9,6 +9,7 @@
  *
  *   node scripts/capture.mjs /ride --theme dark --wait mapIdle --out out/ride.png
  *   node scripts/capture.mjs /ride --eval "document.title"
+ *   node scripts/capture.mjs /library --cookie "better-auth.session_token=..."  
  */
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -30,6 +31,7 @@ const height = Number(arg("height", 1600));
 const out = arg("out", `out/capture-${theme}.png`);
 const waitFor = arg("wait", null);
 const evalExpr = arg("eval", null);
+const cookie = arg("cookie", null);
 const base = process.env.BASE_URL ?? "http://localhost:3000";
 const url = `${base}${route}${route.includes("?") ? "&" : "?"}theme=${theme}`;
 
@@ -163,6 +165,20 @@ async function main() {
   await cdp.send("Runtime.enable");
   await cdp.send("Log.enable");
   await cdp.send("Network.enable");
+
+  // Sign the page in before it loads anything, so authenticated flows can be
+  // driven end to end. Without this the harness can only ever exercise the
+  // signed-out half of the app — which is the half where sync does nothing.
+  //
+  //   --cookie "better-auth.session_token=<value>"
+  if (cookie) {
+    const eq = cookie.indexOf("=");
+    await cdp.send("Network.setCookie", {
+      name: cookie.slice(0, eq),
+      value: cookie.slice(eq + 1),
+      url: base,
+    });
+  }
   await cdp.send("Emulation.setDeviceMetricsOverride", {
     width,
     height,

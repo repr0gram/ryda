@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ParsedRide } from "@/lib/ingest/fit";
 import { importRide } from "@/lib/store/import";
+import { pushQuietly } from "@/lib/sync/client";
 import { DEFAULT_SETTINGS, loadSettings, type RiderSettings } from "@/lib/rider-settings";
 import { FileDrop } from "./file-drop";
 import { RideView } from "./ride-view";
@@ -22,6 +23,7 @@ export function ImportSurface() {
     setSaveState("saving");
     try {
       const result = await importRide(ride, settings);
+      void pushQuietly(settings);
       setSaveState(result.replaced ? "updated" : "saved");
     } catch {
       setSaveState("error");

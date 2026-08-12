@@ -97,3 +97,17 @@ describe("differs", () => {
     expect(differs(local, older)).toBe(false);
   });
 });
+
+describe("a field the server accepts but does not echo", () => {
+  test("a device figure that round-trips is not re-pushed", () => {
+    // The failure this guards: the summary endpoint stored reportedCalories but
+    // left it out of its response, so every sync saw local 4491 against remote
+    // undefined, decided they differed, and re-uploaded the same rides forever.
+    const withDevice = { ...local, reportedCalories: 4491 };
+    expect(differs(withDevice, { ...remote, reportedCalories: 4491 })).toBe(false);
+  });
+
+  test("a device figure the server has not got yet is a change", () => {
+    expect(differs({ ...local, reportedCalories: 4491 }, remote)).toBe(true);
+  });
+});

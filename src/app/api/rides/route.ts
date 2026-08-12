@@ -229,6 +229,10 @@ export function toWire(row: typeof schema.rides.$inferSelect): WireRide {
     // the recording device wrote, and says which it used.
     kilojoules: kilojoulesFrom(row.meanPower, row.movingSeconds),
     ...energyFor(row.reportedCalories, row.meanPower, row.movingSeconds),
+    // Echoed back, not just consumed. A client diffs its local copy against
+    // this to decide what to push; a field the server accepts but never returns
+    // reads as permanently unsynced, and every sync re-uploads it forever.
+    reportedCalories: row.reportedCalories,
   };
 }
 

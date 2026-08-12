@@ -6,6 +6,7 @@ import { importFiles, recomputeAll, type ImportOutcome } from "@/lib/store/impor
 import { clearAll, deleteRide, listRides, type RideSummary } from "@/lib/store/rides";
 import { DEFAULT_SETTINGS, loadSettings } from "@/lib/rider-settings";
 import { energyFor } from "@/lib/analysis/metrics";
+import { pushQuietly } from "@/lib/sync/client";
 
 export function LibraryView() {
   const [rides, setRides] = useState<RideSummary[] | null>(null);
@@ -36,6 +37,9 @@ export function LibraryView() {
       setProgress(null);
       setOutcome(result);
       refresh();
+      // Carry the new rides up straight away, so "imported" and "on my phone"
+      // are the same event rather than two the rider has to connect.
+      void pushQuietly(settings);
     },
     [refresh],
   );
