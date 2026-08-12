@@ -64,15 +64,22 @@ a device build fails for a reason that is not the code.
 
 - **The build expires after 7 days** and the app stops launching. Re-run
   `make device` to renew it. A paid account extends this to a year.
-- **The widget may not be able to read your session.** It is a separate process
-  and reaches the token through a shared keychain group, which needs the App
-  Group entitlement — generally a paid-account capability. The Simulator does
-  not enforce this, so it works there regardless.
+- **App Groups turned out to be granted.** This was expected to be the thing
+  that broke — the widget is a separate process and reaches the token through a
+  shared keychain group, and App Groups is widely described as paid-only. On a
+  free personal team here, Apple issued a profile carrying both
+  `com.apple.security.application-groups` and `keychain-access-groups`, and both
+  are signed onto the app and the extension. Verify on any new setup with:
 
-  If it fails, the widget says **"Can't reach your session"** rather than
-  "Sign in", specifically so this is distinguishable from being signed out. That
-  message means the entitlement, not your credentials, and no amount of signing
-  in will change it. The fix is a paid account, not code.
+  ```bash
+  codesign -d --entitlements - \
+    ios/build-device/Build/Products/Debug-iphoneos/Ryda.app/PlugIns/RydaWidgetExtension.appex
+  ```
+
+  If a future profile does drop them, the widget says **"Can't reach your
+  session"** rather than "Sign in", specifically so that case is
+  distinguishable from being signed out. That message means the entitlement,
+  not your credentials.
 
 ## Verifying against the real API
 

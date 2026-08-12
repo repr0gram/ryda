@@ -60,6 +60,8 @@ device: generate
 	  -destination 'platform=iOS,id=$(DEVICE_ID)' \
 	  -derivedDataPath build-device \
 	  -allowProvisioningUpdates build
+	xcrun devicectl device install app --device $(DEVICE_ID) \
+	  build-device/Build/Products/Debug-iphoneos/Ryda.app
 
 # What the phone looks like from here — the first thing to check when a device
 # build fails for a reason that is not the code.
