@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { decodeStreams, type WireRide, type WireStreams } from "@/lib/sync/wire";
-import { caloriesFrom, kilojoulesFrom } from "@/lib/analysis/metrics";
+import { energyFor, kilojoulesFrom } from "@/lib/analysis/metrics";
 
 /**
  * A rider's rides.
@@ -85,6 +85,7 @@ export async function POST(request: Request) {
     weightedPower: ride.weightedPower,
     load: ride.load,
     meanHeartRate: ride.meanHeartRate,
+    reportedCalories: ride.reportedCalories ?? null,
     decouplingPercent: ride.decouplingPercent,
     confidence: ride.confidence,
     updatedAt: new Date(),
@@ -174,9 +175,10 @@ export function toWire(row: typeof schema.rides.$inferSelect): WireRide {
     confidence: row.confidence,
     sampleCount: row.sampleCount,
     altitudeSource: row.altitudeSource,
-    // Derived rather than stored, so it works for rides that predate it.
+    // Mechanical work is always derived; the calorie figure prefers whatever
+    // the recording device wrote, and says which it used.
     kilojoules: kilojoulesFrom(row.meanPower, row.movingSeconds),
-    calories: caloriesFrom(kilojoulesFrom(row.meanPower, row.movingSeconds)),
+    ...energyFor(row.reportedCalories, row.meanPower, row.movingSeconds),
   };
 }
 

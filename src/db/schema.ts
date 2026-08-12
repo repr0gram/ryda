@@ -147,6 +147,10 @@ export const rides = pgTable(
     weightedPower: real("weighted_power").notNull(),
     load: real("load").notNull(),
     meanHeartRate: real("mean_heart_rate"),
+    /** Calories the recording device computed, when the file carried one.
+     *  Null means nothing was recorded and the figure has to be derived from
+     *  mechanical work — a different and consistently smaller quantity. */
+    reportedCalories: real("reported_calories"),
     decouplingPercent: real("decoupling_percent"),
     confidence: text("confidence").notNull(),
 

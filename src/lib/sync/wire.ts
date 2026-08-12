@@ -54,6 +54,8 @@ export interface WireRide {
   weightedPower: number;
   load: number;
   meanHeartRate: number | null;
+  /** Calories the recording device computed, null when it recorded none. */
+  reportedCalories?: number | null;
   decouplingPercent: number | null;
   confidence: string;
   sampleCount: number;

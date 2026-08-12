@@ -350,6 +350,35 @@ export function caloriesFrom(kilojoules: number): number {
   return (kilojoules / GROSS_EFFICIENCY) / KJ_PER_KCAL;
 }
 
+export type CalorieSource = "device" | "estimated";
+
+/**
+ * The energy figure to show, and where it came from.
+ *
+ * A device with a heart-rate strap writes `total_calories` into the file, and
+ * that number wins whenever it exists. It models metabolic cost — the whole
+ * cost of being on the bike — where anything derivable here is mechanical work
+ * at the pedals, which is a strictly smaller quantity and misses everything the
+ * body spends staying upright, breathing and cooling itself. On a real 105 km
+ * ride the device said 4,491 kcal against 1,815 from work.
+ *
+ * Falling back to work is right when the file is silent, but the two are not
+ * interchangeable and the caller is told which it got.
+ */
+export function energyFor(
+  reportedCalories: number | null | undefined,
+  meanPower: number,
+  movingSeconds: number,
+): { calories: number; source: CalorieSource } {
+  if (reportedCalories != null && reportedCalories > 0) {
+    return { calories: reportedCalories, source: "device" };
+  }
+  return {
+    calories: caloriesFrom(kilojoulesFrom(meanPower, movingSeconds)),
+    source: "estimated",
+  };
+}
+
 /**
  * Half-window for altitude smoothing before summing ascent, in samples (1 Hz),
  * so the full window is 61 seconds.

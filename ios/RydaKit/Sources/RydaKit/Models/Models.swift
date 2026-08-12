@@ -27,11 +27,20 @@ public struct RideSummary: Codable, Sendable, Identifiable, Hashable {
     public let confidence: String
     public let sampleCount: Int
     public let altitudeSource: String
-    /// Mechanical work and the dietary calories it cost. Derived server-side
-    /// from mean power and moving time, so they exist for rides stored before
-    /// the fields did — hence optional.
+    /// Mechanical work at the pedals.
     public let kilojoules: Double?
+    /// Energy the ride cost. Prefers whatever the recording device wrote;
+    /// `source` says which, because the two are different quantities and the
+    /// derived one is consistently the smaller.
     public let calories: Double?
+    public let source: CalorieSource?
+}
+
+public enum CalorieSource: String, Codable, Sendable {
+    /// The head unit's own figure, modelled from heart rate.
+    case device
+    /// Derived here from mechanical work and an efficiency assumption.
+    case estimated
 }
 
 public struct RideListResponse: Codable, Sendable {
@@ -96,6 +105,7 @@ public struct RideMetrics: Codable, Sendable {
     /// Computed server-side from `kilojoules` and a stated gross efficiency,
     /// so every client agrees about the same ride.
     public let calories: Double?
+    public let source: CalorieSource?
     public let meanHeartRate: Double?
     public let efficiency: Double?
 }

@@ -45,6 +45,7 @@ interface FitSession {
   avg_heart_rate?: number;
   avg_cadence?: number;
   avg_power?: number;
+  total_calories?: number;
 }
 
 interface FitDeviceInfo {
@@ -78,6 +79,16 @@ export interface ParsedRide {
     ascentMeters?: number;
     avgHeartRate?: number;
     avgCadence?: number;
+    /**
+     * Calories the device itself computed, from `session.total_calories`.
+     *
+     * Worth preferring over anything derived here. A head unit with a heart-rate
+     * strap models energy expenditure from heart rate and the rider's profile,
+     * which captures the metabolic cost of a ride — not just the mechanical
+     * work, which is all that can be recovered from speed and gradient. On one
+     * real ride the device said 4,491 kcal where the work implies about 1,800.
+     */
+    calories?: number;
   };
 }
 
@@ -286,6 +297,7 @@ function normalise(
     devices,
     gapSeconds,
     reported: {
+      calories: session.total_calories,
       distanceMeters: session.total_distance,
       elapsedSeconds: session.total_elapsed_time,
       movingSeconds: session.total_timer_time,

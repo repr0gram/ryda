@@ -45,6 +45,8 @@ export interface RideSummary {
   weightedPower: number;
   load: number;
   meanHeartRate: number | null;
+  /** What the device said it cost, when it said anything. */
+  reportedCalories: number | null;
   decouplingPercent: number | null;
   confidence: string;
   importedAt: string;

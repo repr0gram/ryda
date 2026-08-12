@@ -8,7 +8,7 @@ import {
 } from "@/lib/analysis/training-load";
 import { dayDiff, localToday } from "@/lib/analysis/calendar";
 import { DEFAULT_SETTINGS } from "@/lib/rider-settings";
-import { caloriesFrom, kilojoulesFrom } from "@/lib/analysis/metrics";
+import { energyFor } from "@/lib/analysis/metrics";
 
 /**
  * Everything a home-screen widget needs, in one request.
@@ -40,6 +40,7 @@ export async function GET(request: Request) {
       movingSeconds: schema.rides.movingSeconds,
       weightedPower: schema.rides.weightedPower,
       meanPower: schema.rides.meanPower,
+      reportedCalories: schema.rides.reportedCalories,
       elevationGainMeters: schema.rides.elevationGainMeters,
     })
     .from(schema.rides)
@@ -94,7 +95,9 @@ export async function GET(request: Request) {
       elevationGainMeters: Math.round(latest.elevationGainMeters),
       weightedPower: Math.round(latest.weightedPower),
       load: round(latest.load),
-      calories: Math.round(caloriesFrom(kilojoulesFrom(latest.meanPower, latest.movingSeconds))),
+      calories: Math.round(
+        energyFor(latest.reportedCalories, latest.meanPower, latest.movingSeconds).calories,
+      ),
     },
     rideCount: rides.length,
     // A client showing watts has to be able to say whose watts they are. Without

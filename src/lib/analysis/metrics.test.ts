@@ -5,6 +5,7 @@ import {
   caloriesFrom,
   computeRideMetrics,
   decoupling,
+  energyFor,
   kilojoulesFrom,
   load,
   timeInZones,
@@ -282,5 +283,29 @@ describe("energy from a stored summary", () => {
   test("a ride with no moving time has no energy", () => {
     expect(kilojoulesFrom(200, 0)).toBe(0);
     expect(kilojoulesFrom(0, 3600)).toBe(0);
+  });
+});
+
+describe("which energy figure wins", () => {
+  test("a device's own figure beats anything derived from work", () => {
+    // The recorded number models metabolic cost from heart rate. Work at the
+    // pedals is a strictly smaller quantity and misses everything the body
+    // spends staying upright, breathing and cooling — on a real 105 km ride the
+    // head unit said 4,491 kcal against 1,815 from work.
+    const chosen = energyFor(4491, 100, 15919);
+    expect(chosen.calories).toBe(4491);
+    expect(chosen.source).toBe("device");
+  });
+
+  test("falls back to work when the file recorded nothing", () => {
+    for (const nothing of [null, undefined, 0]) {
+      const chosen = energyFor(nothing, 100, 15919);
+      expect(chosen.source).toBe("estimated");
+      expect(chosen.calories).toBeCloseTo(caloriesFrom(kilojoulesFrom(100, 15919)), 6);
+    }
+  });
+
+  test("a ride with neither work nor a device figure reports zero, not NaN", () => {
+    expect(energyFor(null, 0, 0).calories).toBe(0);
   });
 });

@@ -94,7 +94,12 @@ struct RideDetailScreen: View {
             }
 
             if let estimate = r.estimate {
-                ConfidenceNote(estimate: estimate, sampled: s.sampleCount, full: s.fullSampleCount)
+                ConfidenceNote(
+                    estimate: estimate,
+                    sampled: s.sampleCount,
+                    full: s.fullSampleCount,
+                    energySource: r.analysis?.source
+                )
             }
         }
         .padding(16)
@@ -171,6 +176,7 @@ private struct ConfidenceNote: View {
     let estimate: StreamsResponse.Estimate
     let sampled: Int
     let full: Int
+    let energySource: CalorieSource?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -195,6 +201,15 @@ private struct ConfidenceNote: View {
                 Text("These watts are modelled against a default \(Int(estimate.settings.riderKg)) kg rider — set your weight and threshold on the website to make them yours.")
                     .font(.caption2)
                     .foregroundStyle(Palette.statusWarning)
+            }
+
+            if energySource == .estimated {
+                // Worth saying which: a device figure and a work-derived one
+                // differ by a factor of two on the same ride, because one models
+                // metabolic cost and the other only counts work at the pedals.
+                Text("Energy is derived from the work done, because this file didn't record calories. Rides from a head unit with a heart-rate strap carry the device's own figure, which is higher and measures more than pedalling.")
+                    .font(.caption2)
+                    .foregroundStyle(Palette.inkMuted)
             }
 
             if sampled < full {

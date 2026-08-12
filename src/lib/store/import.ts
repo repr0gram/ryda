@@ -63,6 +63,9 @@ export async function importRide(
       weightedPower: metrics.weightedPower,
       load: metrics.load,
       meanHeartRate: metrics.meanHeartRate,
+      // The device's own figure when the file carried one. It models metabolic
+      // cost from heart rate; everything derivable here is mechanical work.
+      reportedCalories: ride.reported.calories ?? null,
       decouplingPercent: metrics.decoupling?.percent ?? null,
       confidence: confidence.level,
     },
@@ -131,6 +134,7 @@ export async function recomputeAll(
           weightedPower: metrics.weightedPower,
           load: metrics.load,
           meanHeartRate: metrics.meanHeartRate,
+          reportedCalories: summary.reportedCalories,
           decouplingPercent: metrics.decoupling?.percent ?? null,
           confidence: confidence.level,
         },

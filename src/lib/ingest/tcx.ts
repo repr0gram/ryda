@@ -187,8 +187,29 @@ export function parseTcx(xml: string): ParsedRide {
     hasMeasuredPower: hasWatts,
     devices: [],
     gapSeconds,
-    reported: {},
+    reported: { calories: totalCalories(doc) },
   };
+}
+
+/**
+ * Calories the recording device computed, summed across laps.
+ *
+ * TCX puts `<Calories>` on each `<Lap>` rather than on the activity, so a ride
+ * with a lap per hour has one element per hour and they have to be added. Kept
+ * because a device figure is the ride's own account of its metabolic cost;
+ * everything derivable here is mechanical work, which is a different quantity.
+ */
+function totalCalories(doc: Document): number | undefined {
+  let total = 0;
+  let found = false;
+  for (const el of Array.from(doc.getElementsByTagName("Calories"))) {
+    const value = num(el.textContent);
+    if (value !== null && value >= 0) {
+      total += value;
+      found = true;
+    }
+  }
+  return found && total > 0 ? total : undefined;
 }
 
 function child(el: Element, tag: string): string | null {
