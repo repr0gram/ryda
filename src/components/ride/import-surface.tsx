@@ -37,7 +37,8 @@ export function ImportSurface() {
         <p className="mt-2 max-w-prose text-[14px] leading-relaxed text-ink-secondary">
           Drop a ride file to see estimated power, weighted power, decoupling and a
           route you can scrub. No power meter needed — power is modelled from
-          gradient, speed and mass, with cadence separating coasting from pedalling.
+          gradient, speed and mass, with freewheeling detected from the physics
+          rather than credited as effort.
         </p>
         <div className="mt-8">
           <FileDrop onRide={setRide} />

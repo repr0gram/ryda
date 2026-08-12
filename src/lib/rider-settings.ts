@@ -36,6 +36,15 @@ export interface RiderSettings {
   surfaceId: string;
   ftp: number;
   /**
+   * Lactate threshold heart rate, bpm. Zero when unknown.
+   *
+   * Anchoring heart-rate zones on LTHR rather than maximum heart rate, because
+   * LTHR can be read off a hard hour of riding, while a true maximum needs an
+   * effort most riders never make — and `220 - age` is wrong by ~10 bpm for
+   * most people, which is a whole zone.
+   */
+  lthr: number;
+  /**
    * False until the rider has actually entered their details.
    *
    * A silent default produces confidently wrong watts — mass scales the whole
@@ -51,6 +60,7 @@ export const DEFAULT_SETTINGS: RiderSettings = {
   positionId: "hoods",
   surfaceId: "road",
   ftp: 250,
+  lthr: 0,
   configured: false,
 };
 
@@ -101,6 +111,8 @@ function sanitise(s: RiderSettings): RiderSettings {
       ? s.surfaceId
       : DEFAULT_SETTINGS.surfaceId,
     ftp: clamp(s.ftp, 50, 600, DEFAULT_SETTINGS.ftp),
+    // Zero means "not set" and must survive the clamp, so it is checked first.
+    lthr: s.lthr > 0 ? clamp(s.lthr, 90, 220, DEFAULT_SETTINGS.lthr) : 0,
     configured: s.configured === true,
   };
 }

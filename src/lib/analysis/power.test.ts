@@ -365,7 +365,7 @@ describe("estimatePower", () => {
     expect(confidence.flags).not.toContain("hr-power-implausible");
   });
 
-  test("confidence degrades without a barometer and without cadence", () => {
+  test("confidence degrades without a barometer", () => {
     const { streams, meta } = syntheticRide({ seconds: 300, speed: 6, grade: 0.04 });
     const { confidence } = estimatePower(
       streams,
@@ -373,8 +373,19 @@ describe("estimatePower", () => {
       PROFILE,
     );
     expect(confidence.flags).toContain("gps-altitude");
-    expect(confidence.flags).toContain("no-cadence");
     expect(confidence.level).not.toBe("high");
     expect(confidence.summary).toMatch(/caution/i);
+  });
+
+  test("a missing cadence sensor is no longer held against a ride", () => {
+    // Coasting is inferred from force balance now, so whether a sensor happened
+    // to be paired says nothing about how good the estimate is. Flagging it
+    // would put a warning on almost every file for a reason that stopped being
+    // true.
+    const { streams, meta } = syntheticRide({ seconds: 300, speed: 6, grade: 0.02 });
+    const withCadence = syntheticRide({ seconds: 300, speed: 6, grade: 0.02, cadence: 85 });
+    expect(estimatePower(streams, meta, PROFILE).confidence.level).toBe(
+      estimatePower(withCadence.streams, withCadence.meta, PROFILE).confidence.level,
+    );
   });
 });

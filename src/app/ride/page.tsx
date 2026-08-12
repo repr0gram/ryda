@@ -1,12 +1,12 @@
 import { Suspense } from "react";
-import { RideDemo } from "@/components/ride/ride-demo";
+import { RideLoader } from "@/components/ride/ride-loader";
 
 export const metadata = { title: "Ride · Ryda" };
 
 export default function RidePage() {
   return (
     <Suspense fallback={null}>
-      <RideDemo />
+      <RideLoader />
     </Suspense>
   );
 }

@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const CHANNELS = [
@@ -72,7 +73,14 @@ function Swatch({ token, label, sub }: { token: string; label: string; sub?: str
   );
 }
 
+/**
+ * The token reference exists to build this app, not to be part of it. Kept
+ * routable in development, gone in production — a shipped page nobody linked to
+ * is scaffolding left in the building.
+ */
 export default function DesignPage() {
+  if (process.env.NODE_ENV === "production") notFound();
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-14">
       <header className="flex items-start justify-between gap-6 pb-10">

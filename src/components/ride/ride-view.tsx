@@ -11,11 +11,28 @@ import {
   toProfile,
   type RiderSettings,
 } from "@/lib/rider-settings";
+import { wPrimeBalance } from "@/lib/analysis/w-prime";
+import { movingAverage } from "@/lib/analysis/signal";
+import { ZONE_SMOOTH_HALF_WINDOW } from "@/lib/analysis/zones";
 import { RiderSettingsPanel } from "./rider-settings-panel";
 import { RideMapLoader } from "./map-loader";
 import { StreamChart } from "./stream-chart";
 import { ConfidenceChip } from "./confidence-chip";
 import { StatRow } from "./stat-row";
+import { ZonePanel } from "./zone-panel";
+
+/**
+ * Work capacity above threshold, joules.
+ *
+ * A season-long power curve can fit this per rider, but that fit needs repeated
+ * maximal efforts between two and fifteen minutes, and it is not worth a knob in
+ * settings: 20 kJ is the usual order of magnitude, and with modelled rather than
+ * measured power the trace is only ever read for its shape.
+ */
+const DEFAULT_W_PRIME_J = 20_000;
+
+/** Below this the tank never emptied enough for the trace to say anything. */
+const W_PRIME_VISIBLE_DEPLETION = 0.02;
 
 type ChannelKey = "power" | "heartrate" | "speed" | "altitude";
 
@@ -83,6 +100,35 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
           : streams.altitude;
 
   const mapToken = MAP_CHANNELS.find((c) => c.key === mapChannel)!.token;
+
+  // W′ balance: how much of the finite capacity above threshold is left at each
+  // moment, which is why the fourth climb hurts more than the first at the same
+  // power. Threshold stands in for critical power — they are not the same
+  // quantity, but they are within a few watts of each other for most riders and
+  // the difference is far inside this model's error.
+  //
+  // Fed the smoothed stream when power is modelled rather than measured. W′
+  // balance integrates everything above threshold, so it is exactly as sharp as
+  // its input's upper tail — and this model's upper tail is artefact. Run raw,
+  // it reported 100% depletion on a four-hour endurance ride, which is the
+  // estimator's spikes being read as repeated sprints. Smoothing to the
+  // resolution the model actually has is the same restraint that keeps
+  // sub-five-minute values off the power curve.
+  const wPrimeInput = useMemo(
+    () =>
+      streams.power
+        ? power.watts
+        : movingAverage(power.watts, ZONE_SMOOTH_HALF_WINDOW),
+    [power.watts, streams.power],
+  );
+  const wBalance = useMemo(
+    () => wPrimeBalance(wPrimeInput, ftp, DEFAULT_W_PRIME_J),
+    [wPrimeInput, ftp],
+  );
+  const wBalanceKj = useMemo(
+    () => Float32Array.from(wBalance.balance, (j) => j / 1000),
+    [wBalance.balance],
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1400px] px-6 py-8">
@@ -220,11 +266,52 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
               xIsDistance={xIsDistance}
             />
           ) : null}
+          {wBalance.maxDepletion > W_PRIME_VISIBLE_DEPLETION ? (
+            <StreamChart
+              label="W′ balance"
+              colorToken="--ch-wbal"
+              x={x}
+              y={wBalanceKj}
+              unit="kJ"
+              format={(v) => v.toFixed(1)}
+              cursor={cursor}
+              syncKey="ride"
+              onSelect={setSelection}
+              xIsDistance={xIsDistance}
+            />
+          ) : null}
         </section>
       </div>
 
       <div className="mt-5">
+        <ZonePanel
+          watts={power.watts}
+          heartrate={streams.heartrate}
+          distance={streams.distance}
+          time={streams.time}
+          paused={streams.paused}
+          ftp={ftp}
+          lthr={settings.lthr}
+          hasMeasuredPower={streams.power !== undefined}
+        />
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
         <ConfidenceChip confidence={power.confidence} />
+        <span className="text-[12px] text-ink-muted">
+          {wBalance.maxDepletion > W_PRIME_VISIBLE_DEPLETION ? (
+            <>
+              Deepest W′ depletion{" "}
+              <span className="text-ink-secondary tabular-nums">
+                {(wBalance.maxDepletion * 100).toFixed(0)}%
+              </span>{" "}
+              — {(wBalance.minimum / 1000).toFixed(1)} kJ of {DEFAULT_W_PRIME_J / 1000} kJ left at
+              the worst moment
+            </>
+          ) : (
+            <>Never went meaningfully above threshold, so W′ stayed full.</>
+          )}
+        </span>
       </div>
     </div>
   );

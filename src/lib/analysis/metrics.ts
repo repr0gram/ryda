@@ -194,9 +194,9 @@ const MOVING_SPEED_MS = 0.5;
  * recorded them. Deciding from the distance channel instead makes the rule the
  * same everywhere: if the bike did not move, the sample is not riding.
  */
-function restingMask(
-  distance: Float64Array,
-  time: Float64Array,
+export function restingMask(
+  distance: ArrayLike<number>,
+  time: ArrayLike<number>,
   paused: Uint8Array | undefined,
   n: number,
 ): Uint8Array {

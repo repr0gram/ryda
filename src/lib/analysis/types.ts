@@ -93,7 +93,6 @@ export const DEFAULT_PROFILE: RiderProfile = {
  */
 export type ConfidenceFlag =
   | "gps-altitude"
-  | "no-cadence"
   | "hr-power-decoupled"
   | "hr-power-implausible"
   | "glitchy-gps"

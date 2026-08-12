@@ -110,6 +110,23 @@ export function RiderSettingsPanel({
               />
             </Field>
 
+            <Field label="Threshold HR" unit="bpm">
+              <input
+                type="number"
+                min={0}
+                max={220}
+                value={settings.lthr || ""}
+                placeholder="—"
+                onChange={(e) => update({ lthr: Number(e.target.value) })}
+                className="w-20 rounded-md border border-hairline bg-surface-2 px-2 py-1 text-right text-[13px] text-ink tabular-nums"
+              />
+            </Field>
+            <p className="-mt-1 text-[11px] leading-relaxed text-ink-muted">
+              Your average heart rate over a hard hour. Unlocks heart-rate zones,
+              which are measured rather than estimated — so on a bike with no power
+              meter they are the more trustworthy half of this screen.
+            </p>
+
             <div>
               <div className="text-[12px] text-ink-secondary">Riding position</div>
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">

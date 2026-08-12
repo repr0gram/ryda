@@ -90,6 +90,21 @@
   --ride-5: light-dark(#4a3aa7, #9085e9);
   --ride-6: light-dark(#e34948, #e66767);
 
+  /* --- Training zones ---------------------------------------------------
+     Ordinal, not categorical: zone 1 to zone 7 is one axis of increasing
+     intensity, so these are a ramp and are only ever used in ramp order.
+     Cool-to-hot is the convention every rider already reads, and lightness
+     falls monotonically across the ramp so the ordering survives greyscale
+     and colour-vision deficiency. Every bar carries its zone name and its
+     time regardless, so nothing here is identified by colour alone.        */
+  --zone-1: light-dark(#8296a8, #6b7c8c);
+  --zone-2: light-dark(#4a8fd4, #3f83c6);
+  --zone-3: light-dark(#1baf7a, #199e70);
+  --zone-4: light-dark(#eda100, #c98500);
+  --zone-5: light-dark(#e8752e, #d16624);
+  --zone-6: light-dark(#d03b3b, #c03535);
+  --zone-7: light-dark(#9c2f68, #8c2a5d);
+
   /* --- Status: fixed, reserved, always paired with icon + label ---------
      Used for ride power-confidence chips, never for a series.             */
   --status-good: #0ca30c;

@@ -1,3 +1,4 @@
+import { restingMask } from "./metrics";
 import { movingAverage, savitzkyGolay } from "./signal";
 import type {
   ConfidenceFlag,
@@ -10,8 +11,6 @@ import type {
 } from "./types";
 
 const G = 9.8067;
-/** Specific gas constant for dry air, J/(kg·K). */
-const R_DRY_AIR = 287.058;
 /** ISA sea-level temperature, K, and lapse rate, K/m. */
 const ISA_T0 = 288.15;
 const ISA_LAPSE = 0.0065;
@@ -509,7 +508,6 @@ function scoreConfidence(
   if (meta.n > 0 && artefacts / meta.n > 0.005) flags.push("glitchy-gps");
 
   if (meta.altitudeSource !== "barometric") flags.push("gps-altitude");
-  if (!streams.cadence) flags.push("no-cadence");
 
   const n = meta.n;
   if (n > 0) {
@@ -539,10 +537,11 @@ function scoreConfidence(
       // rider could produce point at a mis-scaled model — in practice a rider
       // mass or drag area set far too low.
       //
-      // Both terms skip paused filler, or a ride with long stops looks
-      // mis-scaled purely because of zeros we inserted ourselves.
-      const meanHr = meanOf(hr, streams.paused);
-      const weighted = weightedPowerOf(watts, streams.paused);
+      // Both terms skip stopped time, or a ride with long traffic lights looks
+      // mis-scaled purely because of zeros that were never effort.
+      const resting = restingMask(streams.distance, streams.time, streams.paused, n);
+      const meanHr = meanOf(hr, resting);
+      const weighted = weightedPowerOf(watts, resting);
       if (meanHr > 110 && weighted > 0) {
         const ef = weighted / meanHr;
         if (ef < 0.6 || ef > 4) flags.push("hr-power-implausible");
@@ -568,7 +567,6 @@ function levelFor(flags: ConfidenceFlag[]): ConfidenceLevel {
 const FLAG_TEXT: Record<ConfidenceFlag, string> = {
   "gps-altitude":
     "elevation came from GPS rather than a barometer, which roughly quintuples grade error",
-  "no-cadence": "no cadence recorded, so coasting can't be separated from pedalling",
   "hr-power-decoupled":
     "heart rate doesn't track the estimate, which usually means wind or drafting",
   "hr-power-implausible":
@@ -582,7 +580,7 @@ const FLAG_TEXT: Record<ConfidenceFlag, string> = {
 
 function summarise(level: ConfidenceLevel, flags: ConfidenceFlag[]): string {
   if (level === "high") {
-    return "Barometric elevation and cadence both present — this estimate is as good as it gets without a power meter.";
+    return "Barometric elevation, a clean speed trace and heart rate that tracks the estimate — this is as good as it gets without a power meter.";
   }
   const reasons = flags.map((f) => FLAG_TEXT[f]);
   const joined =
