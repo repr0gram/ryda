@@ -17,7 +17,8 @@
     "postinstall": "node scripts/sync-maplibre-worker.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "audit:power": "tsx --tsconfig tsconfig.json scripts/audit-power.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -40,6 +41,7 @@
     "eslint-config-next": "16.3.0",
     "linkedom": "^0.18.13",
     "tailwindcss": "^4",
+    "tsx": "^4.20.3",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

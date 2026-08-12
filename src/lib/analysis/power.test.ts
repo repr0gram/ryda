@@ -155,18 +155,53 @@ describe("estimatePower", () => {
     expect(midMean(heavy.watts)).toBeGreaterThan(midMean(light.watts));
   });
 
-  test("cadence of zero forces coasting to zero watts", () => {
-    // Descending with the legs stopped: the model must not credit gravity.
+  test("freewheeling is detected from physics, with no cadence sensor", () => {
+    // A bike rolling on the flat with nobody pedalling loses speed at exactly
+    // resistive force over mass. Reproduce that deceleration and the model has
+    // to conclude the legs have stopped — the whole point being that it reaches
+    // that conclusion without a cadence channel, which most files lack.
+    const seconds = 160;
+    const time = new Float64Array(seconds);
+    const distance = new Float64Array(seconds);
+    const altitude = new Float64Array(seconds);
+    const speed = new Float32Array(seconds);
+
+    const mass = PROFILE.riderKg + PROFILE.bikeKg + 1.2;
+    let v = 10;
+    for (let i = 0; i < seconds; i++) {
+      time[i] = i;
+      speed[i] = v;
+      distance[i] = i === 0 ? 0 : distance[i - 1] + v;
+      // Pedal for the first 100 s at a steady 10 m/s, then stop pedalling. The
+      // extra 5% is a rider brushing the brakes, which keeps the sample off the
+      // exact zero-residual boundary where float comparison decides nothing.
+      if (i >= 100) {
+        const drag = 0.5 * PROFILE.cda * 1.225 * v * v;
+        const rolling = (PROFILE.riderKg + PROFILE.bikeKg) * 9.8067 * PROFILE.crr;
+        v -= (1.05 * (drag + rolling)) / mass;
+      }
+    }
+    const meta: RideMeta = { altitudeSource: "barometric", n: seconds };
+    const { watts } = estimatePower({ time, distance, altitude, speed }, meta, PROFILE);
+
+    // Allow the mask's clean-up window to settle either side of the transition.
+    for (let i = 115; i < 150; i++) expect(watts[i]).toBe(0);
+    expect(watts[50]).toBeGreaterThan(0);
+  });
+
+  test("a cadence dropout does not zero power when the bike holds speed", () => {
+    // A cadence sensor that drops out reports zero while the rider pedals on.
+    // Believing it deleted 19% of a real ride's mean power, and only on the
+    // rides that happened to have a sensor paired. Physics outranks the channel:
+    // a bike cannot hold 8 m/s on a 2% climb with the legs stopped.
     const { streams, meta } = syntheticRide({
       seconds: 200,
-      speed: 12,
-      grade: 0.06,
+      speed: 8,
+      grade: 0.02,
       cadence: (i) => (i >= 80 && i < 140 ? 0 : 90),
     });
     const { watts } = estimatePower(streams, meta, PROFILE);
-    for (let i = 85; i < 135; i++) expect(watts[i]).toBe(0);
-    // and the pedalling sections are still producing power
-    expect(watts[40]).toBeGreaterThan(0);
+    for (let i = 90; i < 130; i++) expect(watts[i]).toBeGreaterThan(0);
   });
 
   test("never returns negative power on a descent", () => {

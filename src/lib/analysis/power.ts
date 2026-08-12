@@ -88,6 +88,95 @@ const DERIVED_SPEED_SMOOTH_HALF_WINDOW = 5;
 const ACCEL_HALF_WINDOW_S = 3;
 
 /**
+ * Half-window, in seconds, for the acceleration used to DECIDE whether the
+ * rider is coasting — as opposed to how many watts they are producing.
+ *
+ * These want opposite things. Magnitude wants a wide window, because noise
+ * rectified by the negative clamp becomes phantom watts. The coast/pedal
+ * decision wants a narrow one, because a coast lasting four seconds is invisible
+ * to a seven-second central difference. Using one window for both means picking
+ * which error to make; using two means making neither, since the decision is a
+ * binary that gets cleaned up afterwards rather than a number that gets averaged.
+ */
+const COAST_ACCEL_HALF_WINDOW_S = 1;
+
+/**
+ * Shortest run of samples that counts as coasting, seconds.
+ *
+ * Freewheeling is a thing a rider does for a few seconds at least — into a
+ * corner, up to a light, over a crest. Isolated single samples that satisfy the
+ * test are differentiation noise, and a mask built from them would chop real
+ * pedalling into confetti. Runs shorter than this are discarded, and gaps
+ * shorter than this between two coasts are closed.
+ */
+const MIN_COAST_RUN_S = 3;
+
+/**
+ * Detect freewheeling from physics, for the rides with no cadence sensor.
+ *
+ * A rider is coasting when the resistive forces alone account for the motion:
+ * gravity, drag and rolling resistance on one side, the bike's change in
+ * momentum on the other, and nothing left over. Pedalling shows up as a positive
+ * residual, so the discriminator is simply whether the required propulsive force
+ * is above zero.
+ *
+ * Why this has to exist: cadence is the cheapest large accuracy win in the
+ * model, and it was being applied to whichever rides happened to have a sensor
+ * paired. In one real library that was 2 rides out of 13, and on those it
+ * removed 19% of mean power. A correction that only lands on some rides does not
+ * make the library more accurate, it makes it incomparable — and a fitness curve
+ * is nothing but a comparison between rides.
+ */
+function detectCoasting(
+  speed: ArrayLike<number>,
+  time: ArrayLike<number>,
+  resistiveForce: ArrayLike<number>,
+  effectiveMass: number,
+  paused: Uint8Array | undefined,
+): Uint8Array {
+  const n = speed.length;
+  const coasting = new Uint8Array(n);
+
+  for (let i = 0; i < n; i++) {
+    if (!(speed[i] > 0.5)) continue;
+    const prev = Math.max(0, i - COAST_ACCEL_HALF_WINDOW_S);
+    const next = Math.min(n - 1, i + COAST_ACCEL_HALF_WINDOW_S);
+    // Across a pause the inserted zeros read as violent acceleration, which
+    // would look like anything but coasting. Leave those samples alone.
+    if (paused && (paused[prev] === 1 || paused[next] === 1 || paused[i] === 1)) continue;
+
+    const dt = time[next] - time[prev];
+    if (!(dt > 0)) continue;
+    const accel = (speed[next] - speed[prev]) / dt;
+    if (resistiveForce[i] + effectiveMass * accel <= 0) coasting[i] = 1;
+  }
+
+  return cleanRuns(coasting, MIN_COAST_RUN_S);
+}
+
+/** Drop runs shorter than `minRun`, then close gaps shorter than `minRun`. */
+function cleanRuns(mask: Uint8Array, minRun: number): Uint8Array {
+  const out = Uint8Array.from(mask);
+  const sweep = (value: 0 | 1) => {
+    let start = 0;
+    while (start < out.length) {
+      if (out[start] !== value) {
+        start++;
+        continue;
+      }
+      let end = start;
+      while (end < out.length && out[end] === value) end++;
+      if (end - start < minRun) out.fill(value === 1 ? 0 : 1, start, end);
+      start = end;
+    }
+  };
+  sweep(1);
+  // Closing gaps second, so a coast broken by one noisy sample stays one coast.
+  sweep(0);
+  return out;
+}
+
+/**
  * Widen a boolean mask by `radius` samples in both directions.
  *
  * Used so a pause's influence covers everything the smoothing window can reach,
@@ -178,36 +267,61 @@ function deriveSpeed(streams: RideStreams): Float64Array {
 
 export interface EstimatePowerOptions {
   /**
-   * Headwind component along the direction of travel, m/s. Positive is a
-   * headwind. Left at zero unless historical weather is wired in — it is the
-   * second largest error source and is irreducible from the trace alone.
+   * Headwind component along the direction of travel, m/s. Positive opposes the
+   * rider.
+   *
+   * A per-sample series is what this actually wants — see `headwindSeries` in
+   * ./wind. A single number is accepted for tests and for the degenerate case of
+   * a ride with no positions, but it is a poor model of a real ride: a rider
+   * turns, and the same wind is a headwind on the way out and a tailwind back.
+   *
+   * Left at zero when no weather is available, which under-estimates windy days
+   * rather than inventing watts.
    */
-  headwind?: number;
+  headwind?: number | ArrayLike<number>;
   /** Distance window for grade, metres. */
   gradeWindowM?: number;
+  /**
+   * Override the speed smoothing half-window, samples. Calibration only — the
+   * defaults are chosen per speed source and should not be changed per ride.
+   */
+  speedSmoothHalfWindow?: number;
+  /** Override the acceleration half-window, seconds. Calibration only. */
+  accelHalfWindowS?: number;
+  /** Drop the kinetic term entirely, to measure what it contributes. */
+  withoutKinetic?: boolean;
+}
+
+interface ResolvedForces {
+  /** Smoothed, clamped speed, m/s. */
+  velocity: Float64Array;
+  /** Gravity + rolling + drag, N. Everything independent of acceleration. */
+  resistive: Float64Array;
+  /** 1 where the rider is freewheeling. */
+  coasting: Uint8Array;
+  /** Pause mask, widened to cover the smoothing window's reach. */
+  paused: Uint8Array | undefined;
+  /** Samples whose inputs hit a physical guard. */
+  affected: Uint8Array;
 }
 
 /**
- * Estimate power from the physics of riding a bike.
+ * Everything that can be resolved before the acceleration term.
  *
- *   P = (1/η)·[ m·g·(sinθ + Crr·cosθ) + ½·ρ·CdA·(v+w)² + m_eff·a ]·v
- *
- * Two corrections make this materially better than a speed/elevation-only
- * estimator: grade is smoothed properly before differentiation, and cadence
- * gates coasting to zero rather than attributing phantom watts to a descent.
+ * Split out because the coasting decision needs the resistive forces, and the
+ * power computation needs the coasting decision — a strict ordering that reads
+ * as one loop only if you already know the answer.
  */
-export function estimatePower(
+function resolveForces(
   streams: RideStreams,
   meta: RideMeta,
   profile: RiderProfile,
-  options: EstimatePowerOptions = {},
-): EstimatedPower {
+  options: EstimatePowerOptions,
+): ResolvedForces {
   const { headwind = 0, gradeWindowM = 30 } = options;
+  const headwindAt =
+    typeof headwind === "number" ? () => headwind : (i: number) => headwind[i] ?? 0;
   const n = meta.n;
-  const watts = new Float32Array(n);
-  if (n === 0) {
-    return { watts, confidence: scoreConfidence(streams, meta, watts, 0) };
-  }
 
   const totalMass = profile.riderKg + profile.bikeKg;
   const effectiveMass = totalMass + WHEEL_INERTIA_KG;
@@ -227,12 +341,10 @@ export function estimatePower(
   // over four steady hours purely from this. Derived speed therefore gets a
   // wider window.
   const rawSpeed = streams.speed ?? deriveSpeed(streams);
-  const smoothHalfWindow = streams.speedIsDerived
-    ? DERIVED_SPEED_SMOOTH_HALF_WINDOW
-    : SPEED_SMOOTH_HALF_WINDOW;
+  const smoothHalfWindow =
+    options.speedSmoothHalfWindow ??
+    (streams.speedIsDerived ? DERIVED_SPEED_SMOOTH_HALF_WINDOW : SPEED_SMOOTH_HALF_WINDOW);
   const speed = movingAverage(rawSpeed, smoothHalfWindow);
-
-  const cadence = streams.cadence;
 
   // Dilate the pause mask before using it to gate the kinetic term.
   //
@@ -247,21 +359,13 @@ export function estimatePower(
   // single glitch look like a systematically broken trace.
   const affected = new Uint8Array(n);
 
+  const velocity = new Float64Array(n);
+  const resistive = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const v = Math.min(speed[i], MAX_SPEED_MS);
     if (speed[i] > MAX_SPEED_MS) affected[i] = 1;
-    if (!(v > 0.5)) {
-      // Stationary. Not coasting — genuinely stopped.
-      watts[i] = 0;
-      continue;
-    }
-
-    // Cadence of zero means the legs are not driving the bike. Strava's
-    // estimator has no cadence channel; this is the cheapest real accuracy win.
-    if (cadence && cadence[i] === 0) {
-      watts[i] = 0;
-      continue;
-    }
+    velocity[i] = v;
+    if (!(v > 0.5)) continue;
 
     const theta = Math.atan(grade[i]);
     const rho = airDensity(altitude[i], streams.temperature?.[i]);
@@ -271,11 +375,81 @@ export function estimatePower(
 
     // Sign the drag term so a tailwind faster than the rider pushes rather
     // than resists.
-    const vAir = v + headwind;
+    const vAir = v + headwindAt(i);
     const fDrag = 0.5 * profile.cda * rho * vAir * Math.abs(vAir);
 
-    const prev = Math.max(0, i - ACCEL_HALF_WINDOW_S);
-    const next = Math.min(n - 1, i + ACCEL_HALF_WINDOW_S);
+    resistive[i] = fGravity + fRolling + fDrag;
+  }
+
+  // Freewheeling produces no power regardless of how fast the bike is moving.
+  //
+  // Inferred from physics for every ride rather than read from the cadence
+  // channel, which sounds backwards until you check the cadence channel against
+  // physics. On a real head unit with a paired cadence sensor, the samples it
+  // reported as zero break cleanly in two:
+  //
+  //   descending   measured a +0.034 m/s²   freewheeling predicts +0.023  agrees
+  //   flat/uphill  measured a -0.056 m/s²   freewheeling predicts -0.197  does not
+  //
+  // A bicycle rolling on flat ground with ~17 N against it decelerates at
+  // 0.2 m/s². Those samples decelerate at barely a quarter of that, which no
+  // freewheeling bike does — the sensor was dropping out while the rider pedalled
+  // on. Taken literally it deleted 19% of that ride's mean power, on the two
+  // rides out of thirteen that happened to have a sensor paired.
+  //
+  // So cadence is evidence, and here it was refuted. Physics applies to every
+  // ride equally, which is what a fitness curve needs.
+  const coasting = detectCoasting(velocity, streams.time, resistive, effectiveMass, paused);
+
+  return { velocity, resistive, coasting, paused, affected };
+}
+
+/**
+ * Estimate power from the physics of riding a bike.
+ *
+ *   P = (1/η)·[ m·g·(sinθ + Crr·cosθ) + ½·ρ·CdA·(v+w)² + m_eff·a ]·v
+ *
+ * Two corrections make this materially better than a speed/elevation-only
+ * estimator: grade is smoothed properly before differentiation, and coasting is
+ * detected and zeroed rather than credited as watts on every descent.
+ */
+export function estimatePower(
+  streams: RideStreams,
+  meta: RideMeta,
+  profile: RiderProfile,
+  options: EstimatePowerOptions = {},
+): EstimatedPower {
+  const n = meta.n;
+  const watts = new Float32Array(n);
+  if (n === 0) {
+    return { watts, confidence: scoreConfidence(streams, meta, watts, 0) };
+  }
+
+  const { velocity, resistive, coasting, paused, affected } = resolveForces(
+    streams,
+    meta,
+    profile,
+    options,
+  );
+
+  const effectiveMass = profile.riderKg + profile.bikeKg + WHEEL_INERTIA_KG;
+  const accelHalf = options.accelHalfWindowS ?? ACCEL_HALF_WINDOW_S;
+
+  for (let i = 0; i < n; i++) {
+    const v = velocity[i];
+    if (!(v > 0.5)) {
+      // Stationary. Not coasting — genuinely stopped.
+      watts[i] = 0;
+      continue;
+    }
+
+    if (coasting[i] === 1) {
+      watts[i] = 0;
+      continue;
+    }
+
+    const prev = Math.max(0, i - accelHalf);
+    const next = Math.min(n - 1, i + accelHalf);
 
     // Acceleration must not be measured across a recording pause. Speed there
     // is a zero WE inserted, so resuming looks like 0 -> 8 m/s in one second:
@@ -285,9 +459,9 @@ export function estimatePower(
       paused !== undefined && (paused[prev] === 1 || paused[next] === 1 || paused[i] === 1);
 
     let fKinetic = 0;
-    if (!crossesPause) {
+    if (!crossesPause && !options.withoutKinetic) {
       const dt = streams.time[next] - streams.time[prev];
-      let accel = dt > 0 ? (speed[next] - speed[prev]) / dt : 0;
+      let accel = dt > 0 ? (velocity[next] - velocity[prev]) / dt : 0;
       if (accel > MAX_ACCEL_MS2 || accel < -MAX_ACCEL_MS2) {
         accel = Math.max(-MAX_ACCEL_MS2, Math.min(MAX_ACCEL_MS2, accel));
         affected[i] = 1;
@@ -295,7 +469,7 @@ export function estimatePower(
       fKinetic = effectiveMass * accel;
     }
 
-    const pWheel = (fGravity + fRolling + fDrag + fKinetic) * v;
+    const pWheel = (resistive[i] + fKinetic) * v;
     const pLegs = pWheel / profile.drivetrainEfficiency;
 
     // Negative power is braking or coasting, not a contribution. Clamping here
@@ -487,3 +661,9 @@ function correlation(a: ArrayLike<number>, b: ArrayLike<number>): number {
   if (da === 0 || db === 0) return NaN;
   return num / Math.sqrt(da * db);
 }
+
+/** Internals exposed for calibration scripts and regression tests only. */
+export const __testing = {
+  resolveForces,
+  detectCoasting,
+};

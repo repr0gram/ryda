@@ -176,29 +176,72 @@ export interface ComputeMetricsInput {
   ftp?: number;
 }
 
+/** Below this the bike is stopped, not riding slowly. Metres per second. */
+const MOVING_SPEED_MS = 0.5;
+
 /**
- * Drop samples that only exist because the recording was paused.
+ * Mark every sample where the bike was not moving.
+ *
+ * Two different things put a zero in the power stream and only one of them was
+ * being handled. A head unit with auto-pause stops writing records, and the
+ * parser invents filler samples flagged `paused`. A phone app records straight
+ * through the red light, so the stationary samples are real data and carry no
+ * flag at all — but a rider waiting at a light is producing exactly as much
+ * power in both cases.
+ *
+ * Leaving the second kind in dropped average power by 8-13% on the files that
+ * had them, which is a difference between rides caused entirely by which device
+ * recorded them. Deciding from the distance channel instead makes the rule the
+ * same everywhere: if the bike did not move, the sample is not riding.
+ */
+function restingMask(
+  distance: Float64Array,
+  time: Float64Array,
+  paused: Uint8Array | undefined,
+  n: number,
+): Uint8Array {
+  const resting = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    if (paused?.[i]) {
+      resting[i] = 1;
+      continue;
+    }
+    // Look backwards, so the first sample of a ride is judged by the step into
+    // it rather than being dropped for having no predecessor.
+    const a = Math.max(0, i - 1);
+    const b = i === 0 ? Math.min(1, n - 1) : i;
+    const dt = time[b] - time[a];
+    const dd = distance[b] - distance[a];
+    if (!(dt > 0) || dd / dt <= MOVING_SPEED_MS) resting[i] = 1;
+  }
+  return resting;
+}
+
+/**
+ * Drop samples where the rider was not actually riding.
  *
  * This is not a nicety. A real 105 km ride with ~80 minutes of stops reported a
  * mean of 61 W where steady-state physics says ~89 W, purely because a third of
- * the samples were zeros we had inserted ourselves. Every average, and Weighted
- * Power's 30-second window, has to see only real riding.
+ * the samples were zeros. Every average, and Weighted Power's 30-second window,
+ * has to see only real riding.
  */
 function compact(
   watts: Float32Array,
   heartrate: Float32Array | undefined,
-  paused: Uint8Array | undefined,
+  resting: Uint8Array,
 ): { watts: Float32Array; heartrate?: Float32Array } {
-  if (!paused) return { watts, heartrate };
   let keep = 0;
-  for (let i = 0; i < watts.length; i++) if (!paused[i]) keep++;
+  for (let i = 0; i < watts.length; i++) if (!resting[i]) keep++;
   if (keep === watts.length) return { watts, heartrate };
+  // A file that is somehow stationary throughout has nothing to average; fall
+  // back to the raw arrays rather than returning an empty one.
+  if (keep === 0) return { watts, heartrate };
 
   const w = new Float32Array(keep);
   const h = heartrate ? new Float32Array(keep) : undefined;
   let j = 0;
   for (let i = 0; i < watts.length; i++) {
-    if (paused[i]) continue;
+    if (resting[i]) continue;
     w[j] = watts[i];
     if (h && heartrate) h[j] = heartrate[i];
     j++;
@@ -209,7 +252,8 @@ function compact(
 export function computeRideMetrics(input: ComputeMetricsInput): RideMetrics {
   const { watts, time, distance, altitude, heartrate, paused, ftp } = input;
   const n = watts.length;
-  const moving = compact(watts, heartrate, paused);
+  const resting = restingMask(distance, time, paused, n);
+  const moving = compact(watts, heartrate, resting);
 
   const durationSeconds = n > 1 ? time[n - 1] - time[0] : 0;
 
@@ -220,7 +264,7 @@ export function computeRideMetrics(input: ComputeMetricsInput): RideMetrics {
   for (let i = 1; i < n; i++) {
     const dd = distance[i] - distance[i - 1];
     const dt = time[i] - time[i - 1];
-    if (dt > 0 && dd / dt > 0.5) movingSeconds += dt;
+    if (dt > 0 && dd / dt > MOVING_SPEED_MS) movingSeconds += dt;
   }
 
   const meanPower = average(moving.watts);

@@ -104,17 +104,28 @@ suite("parseFit against a real device file", () => {
       heartrate: ride.streams.heartrate,
       ftp: 250,
     };
-    const withPauses = computeRideMetrics(base);
-    const excluded = computeRideMetrics({ ...base, paused });
+    const withoutFlag = computeRideMetrics(base);
+    const withFlag = computeRideMetrics({ ...base, paused });
 
-    // Including invented zeros drags every average down by a large margin —
-    // this was reporting 61 W where the physics says ~89 W.
-    expect(excluded.meanPower).toBeGreaterThan(withPauses.meanPower * 1.15);
-    expect(excluded.weightedPower).toBeGreaterThan(withPauses.weightedPower);
-    expect(excluded.meanHeartRate!).toBeGreaterThan(withPauses.meanHeartRate!);
+    // Stopped time is excluded on the evidence of the distance channel, so
+    // supplying the pause flag as well must not move any average. That
+    // equivalence is the point: a head unit with auto-pause writes no records
+    // and gets a flag, a phone records straight through the red light and gets
+    // none, and the rider was doing the same thing — sitting still. Deciding
+    // from the flag alone made average power 8-13% lower on the phone files.
+    expect(withFlag.meanPower).toBeCloseTo(withoutFlag.meanPower, 6);
+    expect(withFlag.weightedPower).toBeCloseTo(withoutFlag.weightedPower, 6);
+    expect(withFlag.meanHeartRate!).toBeCloseTo(withoutFlag.meanHeartRate!, 6);
 
-    // Total work is a sum, so it must NOT change — paused samples are zero.
-    expect(excluded.kilojoules).toBeCloseTo(withPauses.kilojoules, 6);
+    // And stopped time really is being dropped, rather than nothing happening.
+    const everySample = computeRideMetrics({
+      ...base,
+      distance: ride.streams.distance.map((_, i) => i * 5) as Float64Array,
+    });
+    expect(withFlag.meanPower).toBeGreaterThan(everySample.meanPower * 1.15);
+
+    // Total work is a sum, so it must NOT change — stopped samples are zero.
+    expect(withFlag.kilojoules).toBeCloseTo(withoutFlag.kilojoules, 6);
   });
 
   test("mean power is consistent with steady-state physics for the ride's speed", async () => {
