@@ -99,6 +99,7 @@ export function ImportSurface() {
         meta={ride.meta}
         name={ride.name}
         startedAt={ride.startedAt}
+        reportedCalories={ride.reported.calories}
       />
     </div>
   );

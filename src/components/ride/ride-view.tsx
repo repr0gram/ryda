@@ -48,9 +48,21 @@ export interface RideViewProps {
   meta: RideMeta;
   name: string;
   startedAt: string;
+  /**
+   * Calories the recording device wrote into the file, when it wrote any.
+   * Not derivable from the streams — it models metabolic cost from heart rate,
+   * where everything computed here is mechanical work at the pedals.
+   */
+  reportedCalories?: number | null;
 }
 
-export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
+export function RideView({
+  streams,
+  meta,
+  name,
+  startedAt,
+  reportedCalories,
+}: RideViewProps) {
   const [xIsDistance, setXIsDistance] = useState(false);
   const [mapChannel, setMapChannel] = useState<ChannelKey>("power");
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -168,7 +180,12 @@ export function RideView({ streams, meta, name, startedAt }: RideViewProps) {
         </div>
       </header>
 
-      <StatRow metrics={metrics} ftp={ftp} riderKg={settings.configured ? settings.riderKg : undefined} />
+      <StatRow
+        metrics={metrics}
+        ftp={ftp}
+        riderKg={settings.configured ? settings.riderKg : undefined}
+        reportedCalories={reportedCalories}
+      />
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface-1">

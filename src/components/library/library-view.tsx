@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { importFiles, recomputeAll, type ImportOutcome } from "@/lib/store/import";
 import { clearAll, deleteRide, listRides, type RideSummary } from "@/lib/store/rides";
 import { DEFAULT_SETTINGS, loadSettings } from "@/lib/rider-settings";
+import { energyFor } from "@/lib/analysis/metrics";
 
 export function LibraryView() {
   const [rides, setRides] = useState<RideSummary[] | null>(null);
@@ -177,6 +178,7 @@ export function LibraryView() {
                   <th className="px-3 py-2 text-right font-medium">Climb</th>
                   <th className="px-3 py-2 text-right font-medium">Moving</th>
                   <th className="px-3 py-2 text-right font-medium">Power</th>
+                  <th className="px-3 py-2 text-right font-medium">Energy</th>
                   <th className="px-3 py-2 text-right font-medium">Load</th>
                   <th className="px-3 py-2" />
                 </tr>
@@ -211,6 +213,22 @@ export function LibraryView() {
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-ink-secondary">
                       {Math.round(r.weightedPower)} W
+                    </td>
+                    <td
+                      className="px-3 py-2.5 text-right tabular-nums text-ink-secondary"
+                      title={
+                        r.reportedCalories
+                          ? "Recorded by the device"
+                          : "Derived from work done — this file carried no calorie figure"
+                      }
+                    >
+                      {Math.round(
+                        energyFor(r.reportedCalories, r.meanPower, r.movingSeconds).calories,
+                      ).toLocaleString("en-GB")}
+                      {/* A derived figure counts only work at the pedals, so it
+                          reads far lower than a device's. Marked rather than
+                          silently mixed into the same column. */}
+                      {r.reportedCalories ? "" : "*"}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-ink">
                       {Math.round(r.load)}

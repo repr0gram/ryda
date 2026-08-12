@@ -1,4 +1,4 @@
-import type { RideMetrics } from "@/lib/analysis/metrics";
+import { energyFor, type RideMetrics } from "@/lib/analysis/metrics";
 
 /**
  * The headline numbers. Every one of these recomputes when a range is selected,
@@ -8,11 +8,17 @@ export function StatRow({
   metrics,
   ftp,
   riderKg,
+  reportedCalories,
 }: {
   metrics: RideMetrics;
   ftp: number;
   riderKg?: number;
+  reportedCalories?: number | null;
 }) {
+  // The device's own figure when the file carried one, otherwise derived from
+  // work. The hint says which, because they answer different questions and
+  // differ by roughly a factor of two on the same ride.
+  const energy = energyFor(reportedCalories, metrics.meanPower, metrics.movingSeconds);
   const stats: { label: string; value: string; unit?: string; hint?: string }[] = [
     {
       label: "Distance",
@@ -40,6 +46,14 @@ export function StatRow({
       label: "Load",
       value: Math.round(metrics.load).toString(),
       hint: "100 = one hour at threshold",
+    },
+    {
+      label: "Energy",
+      value: Math.round(energy.calories).toLocaleString("en-GB"),
+      unit: "kcal",
+      // Kept short: this row truncates hints, and which source it came from is
+      // the part that must survive.
+      hint: energy.source === "device" ? "from your head unit" : "derived from work",
     },
     riderKg
       ? {
@@ -69,7 +83,7 @@ export function StatRow({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-hairline bg-[var(--line-hairline)] sm:grid-cols-4 lg:grid-cols-8">
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-hairline bg-[var(--line-hairline)] sm:grid-cols-3 lg:grid-cols-9">
       {stats.map((s) => (
         <div key={s.label} className="bg-surface-1 px-4 py-3">
           <div className="text-[11px] uppercase tracking-wide text-ink-muted">

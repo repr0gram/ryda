@@ -12,6 +12,7 @@ interface Loaded {
   meta: RideMeta;
   name: string;
   startedAt: string;
+  reportedCalories: number | null;
 }
 
 /**
@@ -43,6 +44,7 @@ export function RideLoader() {
         meta: streams.meta,
         name: summary.name,
         startedAt: summary.startedAt,
+        reportedCalories: summary.reportedCalories,
       });
     })();
     return () => {
@@ -62,6 +64,7 @@ export function RideLoader() {
       meta={ride.meta}
       name={ride.name}
       startedAt={ride.startedAt}
+      reportedCalories={ride.reportedCalories}
     />
   );
 }
