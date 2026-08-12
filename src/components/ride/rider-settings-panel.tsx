@@ -7,6 +7,7 @@ import {
   saveSettings,
   type RiderSettings,
 } from "@/lib/rider-settings";
+import { pushSettings } from "@/lib/sync/settings";
 
 /**
  * Calibration controls.
@@ -46,6 +47,10 @@ export function RiderSettingsPanel({
     const next = { ...settings, ...patch, configured: true };
     onChange(next);
     saveSettings(next);
+    // Fire-and-forget to the account. localStorage stays the copy this browser
+    // reads — the app works signed out — but the server needs these to compute
+    // estimated power for clients that carry no physics of their own.
+    void pushSettings(next);
   };
 
   const totalKg = settings.riderKg + settings.bikeKg;

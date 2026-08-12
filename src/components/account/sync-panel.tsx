@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadSettings } from "@/lib/rider-settings";
 import { listRides } from "@/lib/store/rides";
 import { fetchRemoteRides, sync, type SyncProgress, type SyncResult } from "@/lib/sync/client";
+import { reconcileSettings } from "@/lib/sync/settings";
 
 export function SyncPanel() {
   const [local, setLocal] = useState<number | null>(null);
@@ -30,7 +30,11 @@ export function SyncPanel() {
     setError(null);
     setResult(null);
     try {
-      const outcome = await sync(loadSettings(), setProgress);
+      // Reconcile the rider's numbers before any ride moves. Rides pulled down
+      // are re-analysed with these, so doing it the other way round would
+      // analyse a season against a 75 kg stranger and then correct it.
+      const settings = await reconcileSettings();
+      const outcome = await sync(settings, setProgress);
       setResult(outcome);
       await refresh();
     } catch (e) {

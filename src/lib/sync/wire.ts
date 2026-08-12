@@ -95,6 +95,44 @@ export function encodeStreams(streams: RideStreams, meta: RideMeta): WireStreams
   };
 }
 
+/** Column names on `ride_streams`, which differ from the wire names in no case. */
+type StreamRow = { sampleCount: number } & Partial<Record<ChannelName, Uint8Array | null>>;
+
+/**
+ * Turn stored `bytea` columns back into typed arrays, for analysis on the server.
+ *
+ * The copy into a fresh ArrayBuffer is not defensive tidiness. Postgres drivers
+ * hand back buffers that are views into a pooled allocation, so `byteOffset` is
+ * rarely a multiple of 8, and `new Float64Array(buf.buffer, buf.byteOffset, n)`
+ * throws `RangeError: start offset must be a multiple of 8`. It will not
+ * reproduce on a small fixture and will fire on real rides.
+ */
+export function decodeStoredStreams(
+  row: StreamRow,
+  altitudeSource: RideMeta["altitudeSource"],
+  speedIsDerived: boolean,
+): { streams: RideStreams; meta: RideMeta } {
+  const out: Record<string, unknown> = {};
+  for (const name of Object.keys(CHANNELS) as ChannelName[]) {
+    const bytes = row[name];
+    if (!bytes) continue;
+    const Ctor = CHANNELS[name];
+    const aligned = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(aligned).set(bytes);
+    out[name] = new Ctor(aligned);
+  }
+  out.speedIsDerived = speedIsDerived;
+  return {
+    streams: out as unknown as RideStreams,
+    meta: { n: row.sampleCount, altitudeSource },
+  };
+}
+
+/** base64 of a typed array, for channels that are computed rather than stored. */
+export function encodeChannel(view: ArrayBufferView): string {
+  return toBase64(view);
+}
+
 export function decodeStreams(wire: WireStreams): { streams: RideStreams; meta: RideMeta } {
   const out: Record<string, unknown> = {};
   for (const name of Object.keys(CHANNELS) as ChannelName[]) {

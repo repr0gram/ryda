@@ -97,6 +97,9 @@ export const riderSettings = pgTable("rider_settings", {
   positionId: text("position_id").notNull(),
   surfaceId: text("surface_id").notNull(),
   ftp: integer("ftp").notNull(),
+  /** Lactate threshold heart rate, bpm. Zero means the rider has not set one,
+   *  and heart-rate zones stay hidden rather than being anchored on a guess. */
+  lthr: integer("lthr").notNull().default(0),
   configured: boolean("configured").notNull().default(false),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -97,8 +97,16 @@ export function saveSettings(settings: RiderSettings): void {
   }
 }
 
-/** Clamp to physically sensible ranges so a typo can't produce nonsense watts. */
-function sanitise(s: RiderSettings): RiderSettings {
+/**
+ * Clamp to physically sensible ranges so a typo can't produce nonsense watts.
+ *
+ * Exported because the settings API validates with this and nothing else. A
+ * second validator on the server would be a second set of bounds to keep in
+ * step, and mass scales the whole power estimate almost linearly — the two
+ * drifting apart means the same rider gets different watts depending on which
+ * client last saved.
+ */
+export function sanitise(s: RiderSettings): RiderSettings {
   const clamp = (v: number, lo: number, hi: number, fallback: number) =>
     Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
   return {

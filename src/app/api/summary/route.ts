@@ -6,6 +6,8 @@ import {
   consistency,
   rampRate,
 } from "@/lib/analysis/training-load";
+import { dayDiff, localToday } from "@/lib/analysis/calendar";
+import { DEFAULT_SETTINGS } from "@/lib/rider-settings";
 
 /**
  * Everything a home-screen widget needs, in one request.
@@ -46,10 +48,23 @@ export async function GET(request: Request) {
     return Response.json({ hasRides: false });
   }
 
+  const [settings] = await db
+    .select({ ftp: schema.riderSettings.ftp, configured: schema.riderSettings.configured })
+    .from(schema.riderSettings)
+    .where(eq(schema.riderSettings.userId, user.id))
+    .limit(1);
+
   // The curve has to run to today, not to the last ride: form recovers on rest
   // days, and a widget that stopped updating after your last ride would show
   // you as buried all week.
-  const today = new Date().toISOString().slice(0, 10);
+  //
+  // Today comes from the caller, because the server is in UTC and the rider is
+  // not. See localToday — getting this from the server clock puts an evening
+  // ride in Montreal a day in the past before the rider is home.
+  const today = localToday(
+    new URL(request.url).searchParams.get("today"),
+    rides.map((r) => r.localDate),
+  );
   const series = computeTrainingLoad(
     rides.map((r) => ({ date: r.localDate, load: r.load })),
     { to: today },
@@ -79,16 +94,15 @@ export async function GET(request: Request) {
       load: round(latest.load),
     },
     rideCount: rides.length,
+    // A client showing watts has to be able to say whose watts they are. Without
+    // this it cannot tell a rider's real threshold from the 250 W default, and
+    // every number it prints is confidently wrong about someone else.
+    ftp: settings?.ftp ?? DEFAULT_SETTINGS.ftp,
+    settingsConfigured: settings?.configured ?? false,
   });
 }
 
 function round(value: number, places = 0): number {
   const f = 10 ** places;
   return Math.round(value * f) / f;
-}
-
-function dayDiff(from: string, to: string): number {
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  return Math.round((b - a) / 86_400_000);
 }

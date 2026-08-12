@@ -1,0 +1,1 @@
+ALTER TABLE "rider_settings" ADD COLUMN "lthr" integer DEFAULT 0 NOT NULL;

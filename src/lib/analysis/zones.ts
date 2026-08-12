@@ -53,7 +53,7 @@ export const HEART_RATE_ZONES: Zone[] = [
   { index: 1, name: "Recovery", purpose: "conversational", upper: 0.81, token: "--zone-1" },
   { index: 2, name: "Aerobic", purpose: "endurance base", upper: 0.89, token: "--zone-2" },
   { index: 3, name: "Tempo", purpose: "steady work", upper: 0.93, token: "--zone-3" },
-  { index: 4, name: "Threshold", purpose: "at your limit", upper: 0.99, token: "--zone-5" },
+  { index: 4, name: "Threshold", purpose: "at your limit", upper: 0.99, token: "--zone-4" },
   { index: 5, name: "Max", purpose: "above threshold", upper: Infinity, token: "--zone-6" },
 ];
 
